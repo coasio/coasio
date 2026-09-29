@@ -6,18 +6,25 @@
 #include <optional>
 #include <utility>
 
-#include <asio/cancellation_signal.hpp>
+#include "coasio/detail/root_node.hpp"
+#include "coasio/detail/root_outcome.hpp"
+#include "coasio/cancel_scope.hpp"
+#include "coasio/sync/oneshot.hpp"
 
 namespace coasio {
 template <typename T> class task {
 public:
-  struct promise_type {
+  struct promise_type : detail::root_node {
     std::optional<T> result_;
     std::exception_ptr exception_;
-    asio::cancellation_slot cancel_slot_;
-    std::shared_ptr<asio::cancellation_signal> cancel_sig_;
+    std::shared_ptr<cancel_scope> owning_scope_;
+    sync::oneshot::sender<detail::root_outcome<T>> result_sender_;
     std::coroutine_handle<> continuation_;
     bool detached_ = false;
+
+    root_node *get_root_node() {
+      return this;
+    }
 
     task get_return_object() {
       return task{std::coroutine_handle<promise_type>::from_promise(*this)};
@@ -33,6 +40,15 @@ public:
         await_suspend(std::coroutine_handle<promise_type> h) noexcept {
           auto &p = h.promise();
           if (p.detached_) {
+            detail::root_outcome<T> outcome;
+            if (p.exception_) {
+              outcome.exception = p.exception_;
+            } else {
+              outcome.value = std::move(p.result_);
+            }
+            // Not a problem if nobody's listening
+            auto _ = p.result_sender_.send(std::move(outcome));
+            if (p.owner_rt_) runtime_unregister_root(p.owner_rt_, &p);
             h.destroy();
             return std::noop_coroutine();
           }
@@ -53,15 +69,18 @@ public:
     void unhandled_exception() { exception_ = std::current_exception(); }
 
     template <typename U> auto await_transform(task<U> &&child) {
-      child.handle().promise().cancel_slot_ = cancel_slot_;
+      auto &cp = child.handle().promise();
+      cp.owning_scope_ = owning_scope_;
       return std::move(child);
     }
 
     template <typename Awaitable>
     decltype(auto) await_transform(Awaitable &&a) {
       // Leaves (timers, sockets, etc.)
-      if constexpr (requires { a.set_cancel_slot(cancel_slot_); }) {
-        a.set_cancel_slot(cancel_slot_);
+      if constexpr (requires { a.set_cancel_scope(owning_scope_); }) {
+        a.set_cancel_scope(owning_scope_);
+      } else {
+        static_assert(sizeof(Awaitable) == 0, "This awaitable don't have set_cancel_scope");
       }
       return std::forward<Awaitable>(a);
     }
@@ -101,7 +120,19 @@ public:
 
   task(task &&o) noexcept : handle_(std::exchange(o.handle_, {})) {}
 
+  task& operator=(task &&o) noexcept {
+    if (this != &o) {
+      if (handle_) {
+        handle_.destroy();
+      }
+      handle_ = std::exchange(o.handle_, {});
+    }
+    return *this;
+  }
+
   task(const task &) = delete;
+
+  task& operator=(const task &) = delete;
 
   ~task() {
     if (handle_)
@@ -119,13 +150,8 @@ public:
     return h;
   }
 
-  void set_cancellation_slot(asio::cancellation_slot slot) {
-    handle_.promise().cancel_slot_ = slot;
-  }
-
-  void set_cancellation_signal(
-      const std::shared_ptr<asio::cancellation_signal> &sig) {
-    handle_.promise().cancel_sig_ = sig;
+  void set_owning_scope(std::shared_ptr<cancel_scope> owning_scope) {
+    handle_.promise().owning_scope_ = std::move(owning_scope);
   }
 
   [[nodiscard]] std::coroutine_handle<promise_type> handle() const noexcept {
@@ -140,12 +166,16 @@ private:
 
 template <> class task<void> {
 public:
-  struct promise_type {
+  struct promise_type : detail::root_node {
     std::exception_ptr exception_;
-    asio::cancellation_slot cancel_slot_;
-    std::shared_ptr<asio::cancellation_signal> cancel_sig_;
+    std::shared_ptr<cancel_scope> owning_scope_;
+    sync::oneshot::sender<detail::root_outcome<void>> result_sender_;
     std::coroutine_handle<> continuation_;
     bool detached_ = false;
+
+    root_node *get_root_node() {
+      return this;
+    }
 
     task get_return_object() {
       return task{std::coroutine_handle<promise_type>::from_promise(*this)};
@@ -161,6 +191,12 @@ public:
         await_suspend(std::coroutine_handle<promise_type> h) noexcept {
           auto &p = h.promise();
           if (p.detached_) {
+            detail::root_outcome<void> outcome;
+            if (p.exception_) {
+              outcome.exception = p.exception_;
+            }
+            auto _ = p.result_sender_.send(std::move(outcome));
+            if (p.owner_rt_) runtime_unregister_root(p.owner_rt_, &p);
             h.destroy();
             return std::noop_coroutine();
           }
@@ -177,15 +213,19 @@ public:
     void unhandled_exception() { exception_ = std::current_exception(); }
 
     template <typename U> auto await_transform(task<U> &&child) {
-      child.handle().promise().cancel_slot_ = cancel_slot_;
+      auto &cp = child.handle().promise();
+      cp.owning_scope_ = owning_scope_;
       return std::move(child);
     }
 
     template <typename Awaitable>
     decltype(auto) await_transform(Awaitable &&a) {
       // Leaves (timers, sockets, etc.)
-      if constexpr (requires { a.set_cancel_slot(cancel_slot_); }) {
-        a.set_cancel_slot(cancel_slot_);
+      if constexpr (requires { a.set_cancel_scope(owning_scope_); }) {
+        a.set_cancel_scope(owning_scope_);
+      } else {
+        // TODO: To be replaced with a proper error mechanism that only triggers in library tests
+        static_assert(sizeof(Awaitable) == 0, "This awaitable don't have set_cancel_scope");
       }
       return std::forward<Awaitable>(a);
     }
@@ -224,7 +264,19 @@ public:
 
   task(task &&o) noexcept : handle_(std::exchange(o.handle_, {})) {}
 
+  task& operator=(task &&o) noexcept {
+    if (this != &o) {
+      if (handle_) {
+        handle_.destroy();
+      }
+      handle_ = std::exchange(o.handle_, {});
+    }
+    return *this;
+  }
+
   task(const task &) = delete;
+
+  task &operator=(const task &) = delete;
 
   ~task() {
     if (handle_)
@@ -242,13 +294,8 @@ public:
     return h;
   }
 
-  void set_cancellation_slot(asio::cancellation_slot slot) {
-    handle_.promise().cancel_slot_ = slot;
-  }
-
-  void set_cancellation_signal(
-      const std::shared_ptr<asio::cancellation_signal> &sig) {
-    handle_.promise().cancel_sig_ = sig;
+  void set_owning_scope(std::shared_ptr<cancel_scope> owning_scope) {
+    handle_.promise().owning_scope_ = std::move(owning_scope);
   }
 
   [[nodiscard]] std::coroutine_handle<promise_type> handle() const noexcept {

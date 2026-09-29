@@ -5,7 +5,7 @@
 
 #include "semaphore.hpp"
 
-namespace coasio::sync::mutex {
+namespace coasio::sync {
 class mutex_guard {
   semaphore_permit permit_;
 
@@ -29,6 +29,6 @@ public:
     });
   }
 };
-} // namespace coasio::sync::mutex
+}
 
 #endif // !COASIO_SYNC_MUTEX_HPP

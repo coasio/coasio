@@ -41,26 +41,49 @@ public:
       asio::error_code ec_;
       listener &listener_;
       std::optional<socket> socket_;
+      std::shared_ptr<cancel_scope> scope_{};
+      cancel_guard guard_;
+      asio::cancellation_signal sig_{};
 
       explicit listen_awaiter(listener &listener)
           : listener_{listener}, socket_{std::nullopt} {}
 
-      bool await_ready() const noexcept { return false; }
+      void set_cancel_scope(std::shared_ptr<cancel_scope> s) noexcept {
+        guard_.bind(scope_ = std::move(s));
+      }
+
+      bool await_ready() noexcept {
+        if (detail::already_cancelled(scope_)) {
+          ec_ = asio::error::operation_aborted;
+          return true;
+        }
+        return false;
+      }
 
       void await_suspend(std::coroutine_handle<> h) noexcept {
         runtime *rt = runtime::current();
+        auto r = guard_.arm([this] { sig_.emit(asio::cancellation_type::all); });
+        if (r == cancel_guard::arm_result::already_cancelled) {
+          ec_ = asio::error::operation_aborted;
+          rt->schedule(h);
+          return;
+        }
+
         listener_.asio_handle().async_accept(
+          asio::bind_cancellation_slot(sig_.slot(),
             [h, rt, this](const asio::error_code &ec,
                           asio::ip::tcp::socket sock) {
+              guard_.disarm();
               ec_ = ec;
               if (!ec_) {
                 socket_ = socket{(std::move(sock))};
               }
               rt->schedule(h);
-            });
+            }));
       }
 
       std::expected<socket, std::error_code> await_resume() noexcept {
+        guard_.disarm();
         if (ec_)
           return std::unexpected{ec_};
         return std::move(socket_.value());

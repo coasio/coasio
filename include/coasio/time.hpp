@@ -1,14 +1,17 @@
 #ifndef COASIO_TIME_HPP
 #define COASIO_TIME_HPP
 
-#include "detail/async_op.hpp"
-#include "runtime.hpp"
-#include <asio/basic_waitable_timer.hpp>
-#include <asio/error_code.hpp>
-#include <asio/steady_timer.hpp>
 #include <chrono>
 #include <coroutine>
 #include <expected>
+
+#include <asio/basic_waitable_timer.hpp>
+#include <asio/error_code.hpp>
+#include <asio/steady_timer.hpp>
+
+#include "cancel_scope.hpp"
+#include "detail/fwd.hpp"
+#include "detail/async_op.hpp"
 
 namespace coasio::time {
 template <typename Clock = std::chrono::steady_clock> class timer {
@@ -76,35 +79,53 @@ inline auto sleep(const std::chrono::milliseconds ms) {
   struct sleep_awaiter {
     std::error_code ec_;
     std::chrono::milliseconds duration_;
-    asio::cancellation_slot cancel_slot_;
+    std::shared_ptr<cancel_scope> scope_;
+    cancel_guard guard_;
+    asio::cancellation_signal sig_;
     std::unique_ptr<asio::steady_timer> timer_;
-
-    // See coasio::task::promise_type::await_transform(Awaitable &&a)
-    void set_cancel_slot(asio::cancellation_slot slot) noexcept {
-      cancel_slot_ = slot;
-    }
 
     explicit sleep_awaiter(const std::chrono::milliseconds duration)
         : duration_(duration) {}
 
-    bool await_ready() const noexcept { return duration_.count() <= 0; }
+    // See coasio::task::promise_type::await_transform(Awaitable &&a)
+    void set_cancel_scope(std::shared_ptr<cancel_scope> scope) noexcept {
+      guard_.bind(scope_ = std::move(scope));
+    }
+
+    bool await_ready() noexcept {
+      if (duration_.count() <= 0) return true;
+      if (detail::already_cancelled(scope_)) {
+        ec_ = coasio::error::cancelled;
+        return true;
+      }
+      return false;
+    }
 
     void await_suspend(std::coroutine_handle<> h) noexcept {
-      runtime *rt = runtime::current();
-      if (!rt) {
-        std::cerr << "Called outside a coasio runtime\n";
-        std::terminate();
+      runtime *rt = detail::current_runtime();
+      assert(rt && "coasio: no current runtime bound to this thread");
+
+      auto r = guard_.arm([this] {
+        sig_.emit(asio::cancellation_type::all);
+      });
+      if (r == cancel_guard::arm_result::already_cancelled) {
+        ec_ = coasio::error::cancelled;
+        detail::runtime_schedule(rt, h);
+        return;
       }
+
       timer_ =
           std::make_unique<asio::steady_timer>(rt->get_io_context(), duration_);
       timer_->async_wait(asio::bind_cancellation_slot(
-          cancel_slot_, [h, rt, this](const asio::error_code &ec) {
+          sig_.slot(), [this, h, rt](const asio::error_code &ec) {
+            guard_.disarm();
             ec_ = ec;
-            rt->schedule(h);
+            detail::runtime_schedule(rt, h);
           }));
     }
 
     std::expected<void, std::error_code> await_resume() noexcept {
+      guard_.disarm();
       if (ec_)
         return std::unexpected(ec_);
       return {};

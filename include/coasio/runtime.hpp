@@ -2,22 +2,25 @@
 #define COASIO_RUNTIME_HPP
 
 #include <asio/io_context.hpp>
-#include <asio/post.hpp>
 #include <atomic>
 #include <condition_variable>
 #include <coroutine>
+#include <expected>
 #include <future>
 #include <iostream>
 #include <mutex>
+#include <optional>
 #include <queue>
 #include <thread>
 #include <vector>
 
+#include "cancel_scope.hpp"
+#include "detail/fwd.hpp"
+#include "detail/root_node.hpp"
 #include "task.hpp"
+#include "sync/oneshot.hpp"
 
 namespace coasio {
-class runtime;
-
 template <typename T> class JoinHandle;
 
 class worker {
@@ -48,18 +51,32 @@ class runtime {
   std::vector<std::jthread> io_worker_threads_;
   std::vector<std::jthread> worker_threads_;
 
+  std::mutex roots_mutex_;
+  detail::root_node *roots_head_ = nullptr;
+  std::size_t live_roots_ = 0;
+  std::condition_variable roots_drained_cv_;
+
   static inline thread_local runtime *current_runtime_ = nullptr;
 
   template <typename T> JoinHandle<T> _spawn(task<T> task) {
-    if (!task)
-      return JoinHandle<T>{nullptr, nullptr};
+    context_guard guard(this);
 
-    auto sig = std::make_shared<asio::cancellation_signal>();
-    task.set_cancellation_slot(sig->slot());
-    task.set_cancellation_signal(sig);
+    if (!task)
+      return JoinHandle<T>{};
+
+    auto scope = std::make_shared<cancel_scope>();
+    auto [tx, rx] = sync::make_oneshot<detail::root_outcome<T>>();
+
+    task.set_owning_scope(scope);
+    task.handle().promise().result_sender_ = std::move(tx);
+    task.handle().promise().owner_rt_ = this;
+    task.handle().promise().scope_raw_ = scope.get();
+
     auto handle = task.detach();
+    register_root(handle.promise().get_root_node()); // TODO: investigate why: cannot convert argument 1 from '_CoroPromise' to 'coasio::detail::root_node *'
     schedule(handle);
-    return JoinHandle<T>{this, std::move(sig)};
+
+    return JoinHandle<T>{this, std::move(scope), std::move(rx)};
   }
 
   template <typename T> T _block_on(task<T> t) {
@@ -93,7 +110,7 @@ public:
 
   ~runtime();
 
-  static runtime *current() noexcept { return current_runtime_; }
+  static runtime *current() noexcept {return current_runtime_; }
 
   struct context_guard {
     runtime *prev_;
@@ -154,8 +171,8 @@ public:
   std::optional<std::coroutine_handle<>> get_next_task_from_queue() {
     std::unique_lock lock(global_tasks_queue_mutex_);
     global_tasks_queue_cv_.wait(
-        lock, [this] { return !global_tasks_.empty() || stop_requested_; });
-    if (stop_requested_ && global_tasks_.empty()) {
+        lock, [this] { return !global_tasks_.empty() || stop_requested_.load(std::memory_order_acquire); });
+    if (stop_requested_.load(std::memory_order_acquire) && global_tasks_.empty()) {
       return std::nullopt;
     }
     auto h = global_tasks_.front();
@@ -169,24 +186,64 @@ public:
     global_tasks_queue_cv_.notify_one();
   }
 
+  void register_root(detail::root_node *n) {
+    std::lock_guard lock(roots_mutex_);
+    n->next_ = roots_head_;
+    n->prev_ = nullptr;
+    if (roots_head_) roots_head_->prev_ = n;
+    roots_head_ = n;
+    ++live_roots_;
+  }
+
+  void unregister_root(detail::root_node *n) {
+    std::lock_guard lock(roots_mutex_);
+    if (n->prev_) n->prev_->next_ = n->next_; else roots_head_ = n->next_;
+    if (n->next_) n->next_->prev_ = n->prev_;
+    if (--live_roots_ == 0) roots_drained_cv_.notify_all();
+  }
+
   friend class worker;
   friend class io_worker;
 };
 
+namespace detail {
+  inline runtime *current_runtime() noexcept {
+    return runtime::current();
+  }
+
+  inline void runtime_schedule(runtime *rt, std::coroutine_handle<> h) noexcept {
+    rt->schedule(h);
+  }
+
+  inline void runtime_unregister_root(runtime *rt, detail::root_node *n) noexcept {
+    rt->unregister_root(n);
+  }
+}
+
 template <typename T> class JoinHandle {
 public:
-  JoinHandle(runtime *rt, std::shared_ptr<asio::cancellation_signal> sig)
-      : rt_(rt), sig_(std::move(sig)) {}
+  JoinHandle() = default;
+  JoinHandle(runtime *rt, std::shared_ptr<cancel_scope> scope, sync::oneshot::receiver<detail::root_outcome<T>> rx)
+      : rt_(rt), scope_(std::move(scope)), rx_(std::move(rx)) {}
 
-  void abort(asio::cancellation_type type = asio::cancellation_type::all) {
-    if (!sig_ || !rt_)
-      return;
-    asio::post(rt_->get_io_context(), [sig = sig_, type] { sig->emit(type); });
+  void abort() const {
+    if (scope_) scope_->cancel();
+  }
+
+  [[nodiscard]] bool cancelled() const noexcept { return detail::already_cancelled(scope_); }
+
+  task<std::expected<T, std::error_code>> join() {
+    auto r = co_await std::move(rx_);
+    if (!r) co_return std::unexpected(r.error());
+    if (r->exception) std::rethrow_exception(r->exception);
+    if constexpr (std::is_void_v<T>) co_return std::expected<void, std::error_code>{};
+    else co_return std::move(*r->value);
   }
 
 private:
   runtime *rt_ = nullptr;
-  std::shared_ptr<asio::cancellation_signal> sig_;
+  std::shared_ptr<cancel_scope> scope_;
+  sync::oneshot::receiver<detail::root_outcome<T>> rx_;
 };
 }; // namespace coasio
 

@@ -6,3 +6,4 @@ out/
 CMakeSettings.json
 compile_commands.json
 *.sh
+docs/

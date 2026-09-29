@@ -1,9 +1,8 @@
 #include <chrono>
 #include <iostream>
 
+#include <coasio.hpp>
 #include <coasio/net/tcp/socket.hpp>
-#include <coasio/runtime.hpp>
-#include <coasio/task.hpp>
 #include <coasio/time.hpp>
 
 using namespace std::chrono_literals;
@@ -87,9 +86,9 @@ int main() {
     for (size_t i = 0; i < 1'000'000; i++) {
       if (i % 100'000 == 0)
         std::cout << i << "\n";
-      coasio::runtime::spawn(basic_task(b));
+      coasio::spawn(basic_task(b));
     }
     co_await coasio::time::sleep(2s);
     co_return;
-  }());
+  });
 }
