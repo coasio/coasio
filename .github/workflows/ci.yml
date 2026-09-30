@@ -6,76 +6,66 @@ on:
   pull_request:
 
 jobs:
-  build-and-test:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: Windows MSVC
-            os: windows-latest
-            preset: windows-msvc
-
-          - name: Linux GCC
-            os: ubuntu-24.04
-            preset: linux-gcc
-
-          - name: Linux Clang
-            os: ubuntu-24.04
-            preset: linux-clang
-
-    name: ${{ matrix.name }}
-    runs-on: ${{ matrix.os }}
-
+  windows-msvc:
+    name: Windows MSVC
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Setup MSVC
-        if: matrix.preset == 'windows-msvc'
         uses: ilammy/msvc-dev-cmd@v1
-
-      - name: Install Ninja (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get install -y ninja-build
-
-      - name: Install LLVM/Clang (Linux Clang)
-        if: matrix.preset == 'linux-clang'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang
-
       - name: Cache FetchContent dependencies
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/build/_deps
-          key: deps-${{ matrix.preset }}-${{ hashFiles('CMakeLists.txt', 'tests/CMakeLists.txt') }}
-          restore-keys: deps-${{ matrix.preset }}-
-
-      - name: Configure (Windows MSVC)
-        if: matrix.preset == 'windows-msvc'
-        run: cmake -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl -DCMAKE_CXX_STANDARD=23 -DCOASIO_BUILD_TESTS=ON
-
-      - name: Configure (Linux GCC)
-        if: matrix.preset == 'linux-gcc'
-        run: |
-          sudo apt-get update && sudo apt-get install -y g++-12
-          cmake -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_CXX_COMPILER=g++-12 \
-            -DCMAKE_CXX_STANDARD=23 \
-            -DCOASIO_BUILD_TESTS=ON
-
-      - name: Configure (Linux Clang)
-        if: matrix.preset == 'linux-clang'
-        run: |
-          sudo apt-get update && sudo apt-get install -y clang-17
-          cmake -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_CXX_COMPILER=clang++-17 \
-            -DCMAKE_CXX_STANDARD=23 \
-            -DCOASIO_BUILD_TESTS=ON
-
+          key: deps-windows-msvc-${{ hashFiles('CMakeLists.txt', 'tests/CMakeLists.txt') }}
+          restore-keys: deps-windows-msvc-
+      - name: Configure
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl -DCMAKE_CXX_STANDARD=23 -DCOASIO_BUILD_TESTS=ON
       - name: Build
         run: cmake --build build --config Release -j
+      - name: Test
+        run: ctest --test-dir build --output-on-failure --timeout 60 -C Release
 
+  linux-gcc:
+    name: Linux GCC
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Ninja
+        run: sudo apt-get install -y ninja-build
+      - name: Cache FetchContent dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/build/_deps
+          key: deps-linux-gcc-${{ hashFiles('CMakeLists.txt', 'tests/CMakeLists.txt') }}
+          restore-keys: deps-linux-gcc-
+      - name: Configure
+        run: |
+          sudo apt-get update && sudo apt-get install -y g++-12
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-12 -DCMAKE_CXX_STANDARD=23 -DCOASIO_BUILD_TESTS=ON
+      - name: Build
+        run: cmake --build build --config Release -j
+      - name: Test
+        run: ctest --test-dir build --output-on-failure --timeout 60 -C Release
+
+  linux-clang:
+    name: Linux Clang
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Ninja
+        run: sudo apt-get install -y ninja-build
+      - name: Cache FetchContent dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/build/_deps
+          key: deps-linux-clang-${{ hashFiles('CMakeLists.txt', 'tests/CMakeLists.txt') }}
+          restore-keys: deps-linux-clang-
+      - name: Configure
+        run: |
+          sudo apt-get update && sudo apt-get install -y clang-18
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=clang++-18 -DCMAKE_CXX_STANDARD=23 -DCOASIO_BUILD_TESTS=ON
+      - name: Build
+        run: cmake --build build --config Release -j
       - name: Test
         run: ctest --test-dir build --output-on-failure --timeout 60 -C Release
