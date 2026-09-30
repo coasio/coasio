@@ -1,7 +1,5 @@
 #include <coasio/runtime.hpp>
 
-#include <print>
-
 void coasio::worker::run() const {
   runtime::context_guard guard(runtime_);
 
@@ -14,9 +12,7 @@ void coasio::worker::run() const {
   }
 }
 
-void coasio::io_worker::run() const {
-  runtime_->io_context_.run();
-}
+void coasio::io_worker::run() const { runtime_->io_context_.run(); }
 
 coasio::runtime::runtime() : work_guard_(asio::make_work_guard(io_context_)) {
   auto num_threads = std::thread::hardware_concurrency();
@@ -46,7 +42,8 @@ coasio::runtime::~runtime() {
   {
     std::lock_guard lock(roots_mutex_);
     for (auto *n = roots_head_; n; n = n->next_) {
-      if (n->scope_raw_) n->scope_raw_->cancel();
+      if (n->scope_raw_)
+        n->scope_raw_->cancel();
     }
   }
 
@@ -56,8 +53,8 @@ coasio::runtime::~runtime() {
   }
 
   {
-      std::lock_guard lock(global_tasks_queue_mutex_);
-      stop_requested_.store(true, std::memory_order_release);
+    std::lock_guard lock(global_tasks_queue_mutex_);
+    stop_requested_.store(true, std::memory_order_release);
   }
 
   global_tasks_queue_cv_.notify_all();
@@ -65,6 +62,16 @@ coasio::runtime::~runtime() {
   work_guard_.reset();
   io_context_.poll();
 
+  for (auto &io_w_t : io_worker_threads_) {
+    if (io_w_t.joinable()) {
+      io_w_t.join();
+    }
+  }
   io_worker_threads_.clear();
+  for (auto &w_t : worker_threads_) {
+    if (w_t.joinable()) {
+      w_t.join();
+    }
+  }
   worker_threads_.clear();
 };

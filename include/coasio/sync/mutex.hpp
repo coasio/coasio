@@ -29,6 +29,6 @@ public:
     });
   }
 };
-}
+} // namespace coasio::sync
 
 #endif // !COASIO_SYNC_MUTEX_HPP

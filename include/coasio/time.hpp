@@ -10,8 +10,8 @@
 #include <asio/steady_timer.hpp>
 
 #include "cancel_scope.hpp"
-#include "detail/fwd.hpp"
 #include "detail/async_op.hpp"
+#include "detail/fwd.hpp"
 
 namespace coasio::time {
 template <typename Clock = std::chrono::steady_clock> class timer {
@@ -93,7 +93,8 @@ inline auto sleep(const std::chrono::milliseconds ms) {
     }
 
     bool await_ready() noexcept {
-      if (duration_.count() <= 0) return true;
+      if (duration_.count() <= 0)
+        return true;
       if (detail::already_cancelled(scope_)) {
         ec_ = coasio::error::cancelled;
         return true;
@@ -105,9 +106,7 @@ inline auto sleep(const std::chrono::milliseconds ms) {
       runtime *rt = detail::current_runtime();
       assert(rt && "coasio: no current runtime bound to this thread");
 
-      auto r = guard_.arm([this] {
-        sig_.emit(asio::cancellation_type::all);
-      });
+      auto r = guard_.arm([this] { sig_.emit(asio::cancellation_type::all); });
       if (r == cancel_guard::arm_result::already_cancelled) {
         ec_ = coasio::error::cancelled;
         detail::runtime_schedule(rt, h);

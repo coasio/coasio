@@ -6,9 +6,9 @@
 #include <optional>
 #include <utility>
 
+#include "coasio/cancel_scope.hpp"
 #include "coasio/detail/root_node.hpp"
 #include "coasio/detail/root_outcome.hpp"
-#include "coasio/cancel_scope.hpp"
 #include "coasio/sync/oneshot.hpp"
 
 namespace coasio {
@@ -22,9 +22,7 @@ public:
     std::coroutine_handle<> continuation_;
     bool detached_ = false;
 
-    root_node *get_root_node() {
-      return this;
-    }
+    detail::root_node *get_root_node() { return this; }
 
     task get_return_object() {
       return task{std::coroutine_handle<promise_type>::from_promise(*this)};
@@ -48,7 +46,8 @@ public:
             }
             // Not a problem if nobody's listening
             auto _ = p.result_sender_.send(std::move(outcome));
-            if (p.owner_rt_) runtime_unregister_root(p.owner_rt_, &p);
+            if (p.owner_rt_)
+              runtime_unregister_root(p.owner_rt_, &p);
             h.destroy();
             return std::noop_coroutine();
           }
@@ -80,16 +79,16 @@ public:
       if constexpr (requires { a.set_cancel_scope(owning_scope_); }) {
         a.set_cancel_scope(owning_scope_);
       } else {
-        static_assert(sizeof(Awaitable) == 0, "This awaitable don't have set_cancel_scope");
+        static_assert(sizeof(Awaitable) == 0,
+                      "This awaitable don't have set_cancel_scope");
       }
       return std::forward<Awaitable>(a);
     }
   };
 
-  template <typename Self> auto operator co_await(this Self &&self) noexcept {
-    static_assert(std::is_rvalue_reference_v<Self &&>,
-                  "task must be co_awaited as a prvalue/rvalue, did you forget "
-                  "std::move?");
+  auto operator co_await() & = delete;
+
+  auto operator co_await() && noexcept {
     struct awaiter {
       std::coroutine_handle<promise_type> handle_;
 
@@ -113,14 +112,14 @@ public:
         return std::move(*p.result_);
       }
     };
-    return awaiter{std::exchange(self.handle_, nullptr)};
+    return awaiter{std::exchange(handle_, nullptr)};
   }
 
   explicit task(std::coroutine_handle<promise_type> h) : handle_(h) {}
 
   task(task &&o) noexcept : handle_(std::exchange(o.handle_, {})) {}
 
-  task& operator=(task &&o) noexcept {
+  task &operator=(task &&o) noexcept {
     if (this != &o) {
       if (handle_) {
         handle_.destroy();
@@ -132,7 +131,7 @@ public:
 
   task(const task &) = delete;
 
-  task& operator=(const task &) = delete;
+  task &operator=(const task &) = delete;
 
   ~task() {
     if (handle_)
@@ -173,9 +172,7 @@ public:
     std::coroutine_handle<> continuation_;
     bool detached_ = false;
 
-    root_node *get_root_node() {
-      return this;
-    }
+    detail::root_node *get_root_node() { return this; }
 
     task get_return_object() {
       return task{std::coroutine_handle<promise_type>::from_promise(*this)};
@@ -196,7 +193,8 @@ public:
               outcome.exception = p.exception_;
             }
             auto _ = p.result_sender_.send(std::move(outcome));
-            if (p.owner_rt_) runtime_unregister_root(p.owner_rt_, &p);
+            if (p.owner_rt_)
+              runtime_unregister_root(p.owner_rt_, &p);
             h.destroy();
             return std::noop_coroutine();
           }
@@ -224,17 +222,18 @@ public:
       if constexpr (requires { a.set_cancel_scope(owning_scope_); }) {
         a.set_cancel_scope(owning_scope_);
       } else {
-        // TODO: To be replaced with a proper error mechanism that only triggers in library tests
-        static_assert(sizeof(Awaitable) == 0, "This awaitable don't have set_cancel_scope");
+        // TODO: To be replaced with a proper error mechanism that only triggers
+        // in library tests
+        static_assert(sizeof(Awaitable) == 0,
+                      "This awaitable don't have set_cancel_scope");
       }
       return std::forward<Awaitable>(a);
     }
   };
 
-  template <typename Self> auto operator co_await(this Self &&self) noexcept {
-    static_assert(std::is_rvalue_reference_v<Self &&>,
-                  "task must be co_awaited as a prvalue/rvalue, did you forget "
-                  "std::move?");
+  auto operator co_await() & = delete;
+
+  auto operator co_await() && noexcept {
     struct awaiter {
       std::coroutine_handle<promise_type> handle_;
 
@@ -257,14 +256,14 @@ public:
           std::rethrow_exception(p.exception_);
       }
     };
-    return awaiter{std::exchange(self.handle_, nullptr)};
+    return awaiter{std::exchange(handle_, nullptr)};
   }
 
   explicit task(std::coroutine_handle<promise_type> h) : handle_(h) {}
 
   task(task &&o) noexcept : handle_(std::exchange(o.handle_, {})) {}
 
-  task& operator=(task &&o) noexcept {
+  task &operator=(task &&o) noexcept {
     if (this != &o) {
       if (handle_) {
         handle_.destroy();

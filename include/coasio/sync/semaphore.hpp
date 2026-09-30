@@ -38,17 +38,19 @@ struct state {
 
   explicit state(const size_t initial) noexcept
       : permits_(static_cast<ptrdiff_t>(initial)) {
-    assert(initial <= MAX_PERMITS && "Semaphore permit count exceeded MAX_PERMITS");
+    assert(initial <= MAX_PERMITS &&
+           "Semaphore permit count exceeded MAX_PERMITS");
   }
 
   state(const state &) = delete;
   state &operator=(const state &) = delete;
 
-
   [[nodiscard]] bool try_acquire(size_t n) noexcept {
-    if (n == 0) return true;
+    if (n == 0)
+      return true;
     std::lock_guard lk(queue_mtx_);
-    if (head_ != nullptr) return false;
+    if (head_ != nullptr)
+      return false;
     const auto need = static_cast<ptrdiff_t>(n);
     auto cur = permits_.load(std::memory_order_relaxed);
     while (cur >= need) {
@@ -77,16 +79,19 @@ struct state {
 
   bool try_cancel_waiter(waiter *w) noexcept {
     std::lock_guard lk(queue_mtx_);
-    if (w->acquired || w->cancelled) return false;
+    if (w->acquired || w->cancelled)
+      return false;
     unlink(w);
     w->cancelled = true;
     return true;
   }
 
   void release(size_t n = 1) noexcept {
-    if (n == 0) return;
+    if (n == 0)
+      return;
     permits_.fetch_add(static_cast<ptrdiff_t>(n), std::memory_order_seq_cst);
-    if (!has_waiters_.load(std::memory_order_seq_cst)) return;
+    if (!has_waiters_.load(std::memory_order_seq_cst))
+      return;
 
     to_wake buf[16];
     size_t count;
@@ -103,7 +108,8 @@ struct state {
     size_t n = 0;
     {
       std::lock_guard lk(queue_mtx_);
-      if (w->cancelled) return;
+      if (w->cancelled)
+        return;
       if (!w->acquired) {
         unlink(w);
       } else {
@@ -128,16 +134,26 @@ private:
   void link_tail(waiter *w) noexcept {
     w->next = nullptr;
     w->prev = tail_;
-    if (tail_) tail_->next = w; else head_ = w;
+    if (tail_)
+      tail_->next = w;
+    else
+      head_ = w;
     tail_ = w;
     has_waiters_.store(true, std::memory_order_seq_cst);
   }
 
   void unlink(waiter *w) noexcept {
-    if (w->prev) w->prev->next = w->next; else head_ = w->next;
-    if (w->next) w->next->prev = w->prev; else tail_ = w->prev;
+    if (w->prev)
+      w->prev->next = w->next;
+    else
+      head_ = w->next;
+    if (w->next)
+      w->next->prev = w->prev;
+    else
+      tail_ = w->prev;
     w->prev = w->next = nullptr;
-    if (!head_) has_waiters_.store(false, std::memory_order_seq_cst);
+    if (!head_)
+      has_waiters_.store(false, std::memory_order_seq_cst);
   }
 
   size_t grant_locked(to_wake *out, size_t cap,
@@ -147,7 +163,8 @@ private:
     while (head_) {
       const auto need = head_->requested_permits;
       auto cur = permits_.load(std::memory_order_seq_cst);
-      if (cur < need) break;
+      if (cur < need)
+        break;
       if (!permits_.compare_exchange_weak(cur, cur - need,
                                           std::memory_order_acq_rel,
                                           std::memory_order_relaxed))
@@ -155,15 +172,18 @@ private:
       waiter *w = head_;
       unlink(w);
       w->acquired = true;
-      if (w == self) continue;
-      if (n < cap) out[n++] = {w->rt, w->handle};
-      else         coasio::detail::runtime_schedule(w->rt, w->handle);
+      if (w == self)
+        continue;
+      if (n < cap)
+        out[n++] = {w->rt, w->handle};
+      else
+        coasio::detail::runtime_schedule(w->rt, w->handle);
     }
     return n;
   }
 };
 
-}
+} // namespace semaphore_detail
 
 class semaphore_permit {
 public:
@@ -193,7 +213,8 @@ public:
   void forget() noexcept { permits_ = 0; }
 
   void merge(semaphore_permit &other) noexcept {
-    assert(sem_ == other.sem_ && "Cannot merge permits from different semaphores");
+    assert(sem_ == other.sem_ &&
+           "Cannot merge permits from different semaphores");
     permits_ += std::exchange(other.permits_, 0);
   }
 
@@ -202,7 +223,8 @@ public:
 
 private:
   void release_if_held() noexcept {
-    if (sem_ && permits_ > 0) sem_->release(permits_);
+    if (sem_ && permits_ > 0)
+      sem_->release(permits_);
   }
 
   std::shared_ptr<semaphore_detail::state> sem_;
@@ -216,11 +238,12 @@ public:
   explicit semaphore(size_t initial_permits = 0) noexcept
       : st_(std::make_shared<semaphore_detail::state>(initial_permits)) {}
 
-
   [[nodiscard]] std::optional<semaphore_permit>
   try_acquire(size_t permits = 1) noexcept {
-    if (permits > MAX_PERMITS) return std::nullopt;
-    if (st_->try_acquire(permits)) return semaphore_permit{st_, permits};
+    if (permits > MAX_PERMITS)
+      return std::nullopt;
+    if (st_->try_acquire(permits))
+      return semaphore_permit{st_, permits};
     return std::nullopt;
   }
 
@@ -238,7 +261,8 @@ public:
     }
 
     ~acquire_awaiter() {
-      if (enqueued_) st_->dequeue_or_return(&w_);
+      if (enqueued_)
+        st_->dequeue_or_return(&w_);
     }
 
     void set_cancel_scope(std::shared_ptr<cancel_scope> s) noexcept {
@@ -246,7 +270,8 @@ public:
     }
 
     bool await_ready() noexcept {
-      if (coasio::detail::already_cancelled(scope_)) return true;
+      if (coasio::detail::already_cancelled(scope_))
+        return true;
       if (st_->try_acquire(static_cast<size_t>(w_.requested_permits))) {
         w_.acquired = true;
         return true;
@@ -256,13 +281,14 @@ public:
 
     bool await_suspend(std::coroutine_handle<> h) noexcept {
       w_.handle = h;
-      w_.rt     = coasio::detail::current_runtime();
+      w_.rt = coasio::detail::current_runtime();
 
       auto r = guard_.arm([this] {
         if (st_->try_cancel_waiter(&w_))
           coasio::detail::runtime_schedule(w_.rt, w_.handle);
       });
-      if (r == cancel_guard::arm_result::already_cancelled) return false;
+      if (r == cancel_guard::arm_result::already_cancelled)
+        return false;
 
       enqueued_ = true;
       if (st_->try_acquire_or_enqueue(&w_)) {
@@ -288,7 +314,8 @@ public:
   };
 
   [[nodiscard]] acquire_awaiter acquire(size_t permits = 1) noexcept {
-    assert(permits <= MAX_PERMITS && "semaphore::acquire: permits exceeds MAX_PERMITS");
+    assert(permits <= MAX_PERMITS &&
+           "semaphore::acquire: permits exceeds MAX_PERMITS");
     return acquire_awaiter{st_, permits};
   }
 
@@ -302,6 +329,6 @@ private:
   std::shared_ptr<semaphore_detail::state> st_;
 };
 
-}
+} // namespace coasio::sync
 
 #endif // !COASIO_SYNC_SEMAPHORE_HPP

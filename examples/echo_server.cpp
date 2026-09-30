@@ -4,6 +4,7 @@
 #include "coasio/time.hpp"
 
 #include <atomic>
+#include <cmath>
 
 #define COASIO_MAIN$()                                                         \
   auto __user_main() -> ::coasio::task<int>;                                   \

@@ -17,8 +17,8 @@
 #include "cancel_scope.hpp"
 #include "detail/fwd.hpp"
 #include "detail/root_node.hpp"
-#include "task.hpp"
 #include "sync/oneshot.hpp"
+#include "task.hpp"
 
 namespace coasio {
 template <typename T> class JoinHandle;
@@ -48,8 +48,8 @@ class runtime {
   std::atomic<bool> stop_requested_{false};
   asio::io_context io_context_;
   asio::executor_work_guard<asio::io_context::executor_type> work_guard_;
-  std::vector<std::jthread> io_worker_threads_;
-  std::vector<std::jthread> worker_threads_;
+  std::vector<std::thread> io_worker_threads_;
+  std::vector<std::thread> worker_threads_;
 
   std::mutex roots_mutex_;
   detail::root_node *roots_head_ = nullptr;
@@ -73,7 +73,11 @@ class runtime {
     task.handle().promise().scope_raw_ = scope.get();
 
     auto handle = task.detach();
-    register_root(handle.promise().get_root_node()); // TODO: investigate why: cannot convert argument 1 from '_CoroPromise' to 'coasio::detail::root_node *'
+    register_root(
+        handle.promise()
+            .get_root_node()); // TODO: investigate why: cannot convert argument
+                               // 1 from '_CoroPromise' to
+                               // 'coasio::detail::root_node *'
     schedule(handle);
 
     return JoinHandle<T>{this, std::move(scope), std::move(rx)};
@@ -110,7 +114,7 @@ public:
 
   ~runtime();
 
-  static runtime *current() noexcept {return current_runtime_; }
+  static runtime *current() noexcept { return current_runtime_; }
 
   struct context_guard {
     runtime *prev_;
@@ -170,9 +174,12 @@ public:
   // Queue
   std::optional<std::coroutine_handle<>> get_next_task_from_queue() {
     std::unique_lock lock(global_tasks_queue_mutex_);
-    global_tasks_queue_cv_.wait(
-        lock, [this] { return !global_tasks_.empty() || stop_requested_.load(std::memory_order_acquire); });
-    if (stop_requested_.load(std::memory_order_acquire) && global_tasks_.empty()) {
+    global_tasks_queue_cv_.wait(lock, [this] {
+      return !global_tasks_.empty() ||
+             stop_requested_.load(std::memory_order_acquire);
+    });
+    if (stop_requested_.load(std::memory_order_acquire) &&
+        global_tasks_.empty()) {
       return std::nullopt;
     }
     auto h = global_tasks_.front();
@@ -190,16 +197,22 @@ public:
     std::lock_guard lock(roots_mutex_);
     n->next_ = roots_head_;
     n->prev_ = nullptr;
-    if (roots_head_) roots_head_->prev_ = n;
+    if (roots_head_)
+      roots_head_->prev_ = n;
     roots_head_ = n;
     ++live_roots_;
   }
 
   void unregister_root(detail::root_node *n) {
     std::lock_guard lock(roots_mutex_);
-    if (n->prev_) n->prev_->next_ = n->next_; else roots_head_ = n->next_;
-    if (n->next_) n->next_->prev_ = n->prev_;
-    if (--live_roots_ == 0) roots_drained_cv_.notify_all();
+    if (n->prev_)
+      n->prev_->next_ = n->next_;
+    else
+      roots_head_ = n->next_;
+    if (n->next_)
+      n->next_->prev_ = n->prev_;
+    if (--live_roots_ == 0)
+      roots_drained_cv_.notify_all();
   }
 
   friend class worker;
@@ -207,37 +220,44 @@ public:
 };
 
 namespace detail {
-  inline runtime *current_runtime() noexcept {
-    return runtime::current();
-  }
+inline runtime *current_runtime() noexcept { return runtime::current(); }
 
-  inline void runtime_schedule(runtime *rt, std::coroutine_handle<> h) noexcept {
-    rt->schedule(h);
-  }
-
-  inline void runtime_unregister_root(runtime *rt, detail::root_node *n) noexcept {
-    rt->unregister_root(n);
-  }
+inline void runtime_schedule(runtime *rt, std::coroutine_handle<> h) noexcept {
+  rt->schedule(h);
 }
+
+inline void runtime_unregister_root(runtime *rt,
+                                    detail::root_node *n) noexcept {
+  rt->unregister_root(n);
+}
+} // namespace detail
 
 template <typename T> class JoinHandle {
 public:
   JoinHandle() = default;
-  JoinHandle(runtime *rt, std::shared_ptr<cancel_scope> scope, sync::oneshot::receiver<detail::root_outcome<T>> rx)
+  JoinHandle(runtime *rt, std::shared_ptr<cancel_scope> scope,
+             sync::oneshot::receiver<detail::root_outcome<T>> rx)
       : rt_(rt), scope_(std::move(scope)), rx_(std::move(rx)) {}
 
   void abort() const {
-    if (scope_) scope_->cancel();
+    if (scope_)
+      scope_->cancel();
   }
 
-  [[nodiscard]] bool cancelled() const noexcept { return detail::already_cancelled(scope_); }
+  [[nodiscard]] bool cancelled() const noexcept {
+    return detail::already_cancelled(scope_);
+  }
 
   task<std::expected<T, std::error_code>> join() {
     auto r = co_await std::move(rx_);
-    if (!r) co_return std::unexpected(r.error());
-    if (r->exception) std::rethrow_exception(r->exception);
-    if constexpr (std::is_void_v<T>) co_return std::expected<void, std::error_code>{};
-    else co_return std::move(*r->value);
+    if (!r)
+      co_return std::unexpected(r.error());
+    if (r->exception)
+      std::rethrow_exception(r->exception);
+    if constexpr (std::is_void_v<T>)
+      co_return std::expected<void, std::error_code>{};
+    else
+      co_return std::move(*r->value);
   }
 
 private:

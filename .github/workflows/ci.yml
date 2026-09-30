@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [main]
   pull_request:
 
 jobs:
@@ -36,10 +36,8 @@ jobs:
       - name: Install LLVM/Clang (Linux Clang)
         if: matrix.preset == 'linux-clang'
         run: |
-          wget https://apt.llvm.org/llvm.sh
-          chmod +x llvm.sh
-          sudo ./llvm.sh 19
-          sudo apt-get install -y clang-19 libc++-19-dev libc++abi-19-dev
+          sudo apt-get update
+          sudo apt-get install -y clang
 
       - name: Cache FetchContent dependencies
         uses: actions/cache@v4
@@ -72,8 +70,7 @@ jobs:
         run: |
           cmake -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_CXX_COMPILER=clang++-19 \
-            -DCMAKE_CXX_FLAGS="-stdlib=libc++" \
+            -DCMAKE_CXX_COMPILER=clang++ \
             -DCMAKE_CXX_STANDARD=23 \
             -DCOASIO_BUILD_TESTS=ON
 

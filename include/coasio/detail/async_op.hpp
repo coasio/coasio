@@ -25,7 +25,7 @@
 #include <asio/cancellation_signal.hpp>
 
 #include "coasio/cancel_scope.hpp"
-#include "coasio/detail/fwd.hpp"
+#include "fwd.hpp"
 #include "coasio/error.hpp"
 
 namespace coasio::detail {
@@ -73,9 +73,7 @@ public:
     runtime *rt = current_runtime();
     assert(rt && "coasio: no current runtime bound to this thread");
 
-    auto r = guard_.arm([this] {
-      sig_.emit(asio::cancellation_type::all);
-    });
+    auto r = guard_.arm([this] { sig_.emit(asio::cancellation_type::all); });
     if (r == cancel_guard::arm_result::already_cancelled) {
       ec_ = coasio::error::cancelled;
       runtime_schedule(rt, h);
@@ -83,9 +81,8 @@ public:
     }
 
     init_(asio::bind_cancellation_slot(
-        sig_.slot(),
-        [this, h, rt]<typename... Args>(const std::error_code &ec,
-                                        Args &&...result) noexcept {
+        sig_.slot(), [this, h, rt]<typename... Args>(
+                         const std::error_code &ec, Args &&...result) noexcept {
           guard_.disarm();
           ec_ = ec;
           if constexpr (!std::is_void_v<Result>) {

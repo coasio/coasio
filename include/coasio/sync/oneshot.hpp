@@ -105,7 +105,9 @@ public:
     return state_->set_value(std::move(value));
   }
 
-  [[nodiscard]] bool is_closed() const { return !state_ || state_->is_closed(); }
+  [[nodiscard]] bool is_closed() const {
+    return !state_ || state_->is_closed();
+  }
 };
 
 template <typename T> class receiver {
@@ -132,13 +134,11 @@ public:
     scope_ = std::move(s);
   }
 
-  template <typename Self> auto operator co_await(this Self &&self) noexcept {
-    static_assert(std::is_rvalue_reference_v<Self &&>,
-                  "receiver must be co_awaited as a prvalue/rvalue, did you "
-                  "forget std::move?");
+  auto operator co_await() & = delete;
 
-    if (self.state_)
-      self.state_->rt_ = coasio::detail::current_runtime();
+  auto operator co_await() && noexcept {
+    if (state_)
+      state_->rt_ = coasio::detail::current_runtime();
 
     struct awaiter {
       std::shared_ptr<detail::state<T>> state_;
@@ -193,10 +193,12 @@ public:
       }
     };
 
-    return awaiter{std::exchange(self.state_, nullptr), std::move(self.scope_)};
+    return awaiter{std::exchange(state_, nullptr), std::move(scope_)};
   }
 
-  [[nodiscard]] bool is_closed() const { return !state_ || state_->is_closed(); }
+  [[nodiscard]] bool is_closed() const {
+    return !state_ || state_->is_closed();
+  }
 };
 } // namespace oneshot
 
