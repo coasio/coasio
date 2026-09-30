@@ -5,6 +5,8 @@
 
 #include <atomic>
 #include <cmath>
+#include <iomanip>
+#include <iostream>
 
 #define COASIO_MAIN$()                                                         \
   auto __user_main() -> ::coasio::task<int>;                                   \

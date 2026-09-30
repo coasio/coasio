@@ -5,7 +5,12 @@ FetchContent_Declare(
         GIT_TAG        v3.16.0
         GIT_SHALLOW    TRUE
 )
+# temporarily downgrade the standard only for Catch2 while it compiles
+# it fails to compile in C++23, Clang 17 (paired with GCC 14's libstdc++)
+set(CMAKE_CXX_STANDARD_OLD ${CMAKE_CXX_STANDARD})
+set(CMAKE_CXX_STANDARD 20)
 FetchContent_MakeAvailable(Catch2)
+set(CMAKE_CXX_STANDARD ${CMAKE_CXX_STANDARD_OLD})
 
 function(coasio_add_test TEST_NAME)
     set(TARGET_NAME "test_${TEST_NAME}")
