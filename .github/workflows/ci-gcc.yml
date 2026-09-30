@@ -1,0 +1,27 @@
+name: CI GCC
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Ninja
+        run: sudo apt-get install -y ninja-build
+      - name: Cache FetchContent dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/build/_deps
+          key: deps-linux-gcc-${{ hashFiles('CMakeLists.txt', 'tests/CMakeLists.txt') }}
+          restore-keys: deps-linux-gcc-
+      - name: Configure
+        run: |
+          sudo apt-get update && sudo apt-get install -y g++-12
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-12 -DCMAKE_CXX_STANDARD=23 -DCOASIO_BUILD_TESTS=ON
+      - name: Build
+        run: cmake --build build --config Release -j
+      - name: Test
+        run: ctest --test-dir build --output-on-failure --timeout 60 -C Release
