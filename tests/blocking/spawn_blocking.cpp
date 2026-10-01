@@ -60,37 +60,40 @@ TEST_CASE("spawn_blocking cancels while queued in pool",
   // pool for deterministic queueing
   coasio::runtime rt{};
 
-  std::atomic<bool> blocker_running{false};
-  std::atomic<bool> blocker_release{false};
+  auto blocker_running = std::make_shared<std::atomic<bool>>(false);
+  auto blocker_release = std::make_shared<std::atomic<bool>>(false);
 
-  auto blocker = rt.spawn([&]() -> coasio::task<void> {
-    auto res = co_await coasio::spawn_blocking([&] {
-      blocker_running = true;
-      while (!blocker_release.load()) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-      }
-    });
-    co_return;
-  });
+  auto blocker = rt.spawn(
+      [](auto br, auto brel, coasio::runtime &r) -> coasio::task<void> {
+        auto res = co_await r.spawn_blocking([br, brel] {
+          br->store(true, std::memory_order_release);
+          while (!brel->load(std::memory_order_acquire)) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+          }
+        });
+        co_return;
+      }(blocker_running, blocker_release, rt));
 
-  while (!blocker_running.load()) {
+  while (!blocker_running->load(std::memory_order_acquire)) {
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }
 
-  std::atomic<bool> queued_task_executed{false};
-  auto victim = rt.spawn([&]() -> coasio::task<void> {
-    auto res = co_await rt.spawn_blocking([&] { queued_task_executed = true; });
-    REQUIRE_FALSE(res.has_value());
-    REQUIRE(res.error() == coasio::error::cancelled);
-  });
+  auto queued_task_executed = std::make_shared<std::atomic<bool>>(false);
+  auto victim =
+      rt.spawn([](auto qt_exec, coasio::runtime &r) -> coasio::task<void> {
+        auto res = co_await r.spawn_blocking(
+            [qt_exec] { qt_exec->store(true, std::memory_order_relaxed); });
+        REQUIRE_FALSE(res.has_value());
+        REQUIRE(res.error() == coasio::error::cancelled);
+      }(queued_task_executed, rt));
 
   std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
   victim.abort();
   rt.block_on(victim.join());
 
-  REQUIRE_FALSE(queued_task_executed.load());
+  REQUIRE_FALSE(queued_task_executed->load(std::memory_order_relaxed));
 
-  blocker_release = true;
+  blocker_release->store(true, std::memory_order_release);
   rt.block_on(blocker.join());
 }
