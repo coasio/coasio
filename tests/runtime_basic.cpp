@@ -26,10 +26,11 @@ TEST_CASE("spawn runs on a worker thread, not the calling thread",
   std::atomic<std::thread::id> worker_id{};
   auto main_id = std::this_thread::get_id();
 
-  auto h = rt.spawn([](std::atomic<std::thread::id>* wid) -> coasio::task<void> {
-    wid->store(std::this_thread::get_id(), std::memory_order_release);
-    co_return;
-  }(&worker_id));
+  auto h =
+      rt.spawn([](std::atomic<std::thread::id> *wid) -> coasio::task<void> {
+        wid->store(std::this_thread::get_id(), std::memory_order_release);
+        co_return;
+      }(&worker_id));
 
   rt.block_on(h.join());
   REQUIRE(worker_id.load() != std::thread::id{});
@@ -43,7 +44,7 @@ TEST_CASE("multiple spawned tasks all complete", "[runtime]") {
 
   std::vector<coasio::JoinHandle<void>> handles;
   for (int i = 0; i < N; ++i) {
-    handles.push_back(rt.spawn([](std::atomic<int>* c) -> coasio::task<void> {
+    handles.push_back(rt.spawn([](std::atomic<int> *c) -> coasio::task<void> {
       c->fetch_add(1, std::memory_order_relaxed);
       co_return;
     }(&count)));
@@ -69,7 +70,7 @@ TEST_CASE("abort causes long sleep to return early", "[runtime]") {
 
   std::atomic sleep_was_cancelled{false};
 
-  auto h = rt.spawn([](std::atomic<bool>* swc) -> coasio::task<void> {
+  auto h = rt.spawn([](std::atomic<bool> *swc) -> coasio::task<void> {
     const auto r = co_await coasio::time::sleep(
         std::chrono::minutes(60)); // 60 minutes to triger cmake timeout in case
     swc->store(!r.has_value(), std::memory_order_relaxed);

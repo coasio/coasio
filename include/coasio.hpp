@@ -16,6 +16,16 @@ template <typename Arg> auto spawn(Arg &&arg) {
   return rt->spawn(std::forward<Arg>(arg));
 }
 
+template <typename F> [[nodiscard]] auto spawn_blocking(F &&f) {
+  runtime *rt = runtime::current();
+  if (!rt) {
+    std::printf("coasio::spawn_blocking() called outside a coasio runtime; "
+                "did you mean rt.spawn_blocking(...) instead?\n");
+    std::terminate();
+  }
+  return rt->spawn_blocking(std::forward<F>(f));
+}
+
 }; // namespace coasio
 
 #endif // !COASIO_HPP

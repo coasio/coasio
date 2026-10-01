@@ -21,11 +21,10 @@ public:
 
   auto resolve(std::string_view host, std::string_view service) {
     return detail::async_op<results_type>(
-      [this, host = std::string(host), service = std::string(service)]
-      <typename Args>(Args &&token) {
-        asio_handle().async_resolve(
-          host, service, std::forward<Args>(token));
-      });
+        [this, host = std::string(host),
+         service = std::string(service)]<typename Args>(Args &&token) {
+          asio_handle().async_resolve(host, service, std::forward<Args>(token));
+        });
   }
 
   auto &asio_handle() noexcept { return resolver_; }

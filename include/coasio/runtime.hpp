@@ -15,6 +15,8 @@
 #include <vector>
 
 #include "cancel_scope.hpp"
+#include "detail/blocking/pool.hpp"
+#include "detail/blocking/spawn_blocking.hpp"
 #include "detail/fwd.hpp"
 #include "detail/root_node.hpp"
 #include "sync/oneshot.hpp"
@@ -55,6 +57,10 @@ class runtime {
   detail::root_node *roots_head_ = nullptr;
   std::size_t live_roots_ = 0;
   std::condition_variable roots_drained_cv_;
+
+  std::unique_ptr<detail::blocking::pool> blocking_pool_;
+  std::once_flag blocking_pool_once_;
+  std::size_t blocking_pool_size_ = 1;
 
   static inline thread_local runtime *current_runtime_ = nullptr;
 
@@ -126,6 +132,14 @@ public:
     ~context_guard() noexcept { current_runtime_ = prev_; }
   };
 
+  detail::blocking::pool &blocking_pool() {
+    std::call_once(blocking_pool_once_, [this] {
+      blocking_pool_ =
+          std::make_unique<detail::blocking::pool>(blocking_pool_size_);
+    });
+    return *blocking_pool_;
+  }
+
   template <typename Arg> auto spawn(Arg &&arg) {
     if constexpr (is_task_v<Arg>) {
       return _spawn(std::forward<Arg>(arg));
@@ -152,6 +166,11 @@ public:
           "runtime::block_on(F) requires F to be a coasio::task<T>, "
           "or a callable (e.g. lambda) with signature `coasio::task<T>()`");
     }
+  }
+
+  template <typename F> [[nodiscard]] auto spawn_blocking(F &&f) {
+    return detail::blocking::blocking_awaiter<std::decay_t<F>>{
+        blocking_pool(), std::forward<F>(f)};
   }
 
   asio::io_context &get_io_context() noexcept { return io_context_; }

@@ -12,7 +12,11 @@ void coasio::worker::run() const {
   }
 }
 
-void coasio::io_worker::run() const { runtime_->io_context_.run(); }
+void coasio::io_worker::run() const {
+  // We won't register current_runtime_ to catch
+  // any callback that tries to read it from the io thread
+  runtime_->io_context_.run();
+}
 
 coasio::runtime::runtime() : work_guard_(asio::make_work_guard(io_context_)) {
   auto num_threads = std::thread::hardware_concurrency();
@@ -51,6 +55,8 @@ coasio::runtime::~runtime() {
     std::unique_lock lock(roots_mutex_);
     roots_drained_cv_.wait(lock, [this] { return live_roots_ == 0; });
   }
+
+  blocking_pool_.reset();
 
   {
     std::lock_guard lock(global_tasks_queue_mutex_);

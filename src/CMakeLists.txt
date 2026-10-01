@@ -13,7 +13,7 @@ target_link_libraries(coasio
         asio
 )
 
-target_compile_features(coasio PUBLIC cxx_std_20)
+target_compile_features(coasio PUBLIC cxx_std_23)
 
 find_package(Threads REQUIRED)
 target_link_libraries(coasio PUBLIC Threads::Threads)
