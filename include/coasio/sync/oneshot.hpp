@@ -89,7 +89,15 @@ public:
   explicit sender(std::shared_ptr<detail::state<T>> s) noexcept
       : state_(std::move(s)) {}
   sender(sender &&) = default;
-  sender &operator=(sender &&) = default;
+  sender &operator=(sender &&o) noexcept {
+    if (this != &o) {
+      if (state_) {
+        state_->mark_sender_dropped();
+      }
+      state_ = std::move(o.state_);
+    }
+    return *this;
+  }
   sender(const sender &) = delete;
   sender &operator=(const sender &) = delete;
 
@@ -119,7 +127,16 @@ public:
   explicit receiver(std::shared_ptr<detail::state<T>> s) noexcept
       : state_(std::move(s)) {}
   receiver(receiver &&) = default;
-  receiver &operator=(receiver &&) = default;
+  receiver &operator=(receiver &&o) noexcept {
+    if (this != &o) {
+      if (state_) {
+        state_->mark_receiver_dropped();
+      }
+      state_ = std::move(o.state_);
+      scope_ = std::move(o.scope_);
+    }
+    return *this;
+  }
   receiver(const receiver &) = delete;
   receiver &operator=(const receiver &) = delete;
 
