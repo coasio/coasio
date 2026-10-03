@@ -56,9 +56,11 @@ TEST_CASE("spawn_blocking propagates exceptions", "[runtime][blocking]") {
 
 TEST_CASE("spawn_blocking cancels while queued in pool",
           "[runtime][blocking][cancel]") {
-  // TODO: When the runtime can be configured set one with a 1 thread blocking
-  // pool for deterministic queueing
-  coasio::runtime rt{};
+  coasio::runtime rt = coasio::runtime_builder()
+                           .set_blocking_pool_size(1)
+                           .set_worker_count(1)
+                           .set_io_worker_count(1)
+                           .build();
 
   auto blocker_running = std::make_shared<std::atomic<bool>>(false);
   auto blocker_release = std::make_shared<std::atomic<bool>>(false);

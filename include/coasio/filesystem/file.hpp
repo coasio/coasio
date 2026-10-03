@@ -166,8 +166,8 @@ public:
 
   task<std::expected<void, std::error_code>> sync_data() {
     std::error_code ec;
-    auto status = co_await spawn_blocking(
-        [this, &ec] { asio_handle().sync_data(ec); });
+    auto status =
+        co_await spawn_blocking([this, &ec] { asio_handle().sync_data(ec); });
     if (ec)
       co_return std::unexpected(ec);
     co_return std::expected<void, std::error_code>{};
@@ -175,8 +175,8 @@ public:
 
   task<std::expected<void, std::error_code>> sync_all() {
     std::error_code ec;
-    auto status = co_await spawn_blocking(
-        [this, &ec] { asio_handle().sync_all(ec); });
+    auto status =
+        co_await spawn_blocking([this, &ec] { asio_handle().sync_all(ec); });
     if (ec)
       co_return std::unexpected(ec);
     co_return std::expected<void, std::error_code>{};

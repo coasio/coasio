@@ -18,22 +18,27 @@ void coasio::io_worker::run() const {
   runtime_->io_context_.run();
 }
 
-coasio::runtime::runtime() : work_guard_(asio::make_work_guard(io_context_)) {
-  auto num_threads = std::thread::hardware_concurrency();
-  if (num_threads == 0)
-    num_threads = 1;
+coasio::runtime::runtime(const size_t io_worker_count, size_t worker_count,
+                         const size_t blocking_pool_size)
+    : work_guard_(asio::make_work_guard(io_context_)),
+      blocking_pool_size_(blocking_pool_size) {
+  worker_count = worker_count == 0 ? (std::thread::hardware_concurrency() == 0
+                                          ? 1
+                                          : std::thread::hardware_concurrency())
+                                   : worker_count;
+  if (worker_count == 0)
+    worker_count = 1;
 
-  worker_threads_.reserve(num_threads);
-  for (unsigned int i = 0; i < num_threads; ++i) {
+  worker_threads_.reserve(worker_count);
+  for (unsigned int i = 0; i < worker_count; ++i) {
     worker_threads_.emplace_back([this]() {
       const worker w(this);
       w.run();
     });
   }
 
-  unsigned int num_io_threads = 2; // TODO: configurable
-  io_worker_threads_.reserve(num_io_threads);
-  for (unsigned int i = 0; i < num_io_threads; ++i) {
+  io_worker_threads_.reserve(io_worker_count);
+  for (unsigned int i = 0; i < io_worker_count; ++i) {
     io_worker_threads_.emplace_back([this]() {
       const io_worker w(this);
       w.run();

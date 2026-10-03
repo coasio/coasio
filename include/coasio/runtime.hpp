@@ -60,7 +60,7 @@ class runtime {
 
   std::unique_ptr<detail::blocking::pool> blocking_pool_;
   std::once_flag blocking_pool_once_;
-  std::size_t blocking_pool_size_ = 1;
+  std::size_t blocking_pool_size_;
 
   static inline thread_local runtime *current_runtime_ = nullptr;
 
@@ -116,7 +116,8 @@ class runtime {
   }
 
 public:
-  runtime();
+  explicit runtime(size_t io_worker_count = 1, size_t worker_count = 0,
+                   size_t blocking_pool_size = 1);
 
   ~runtime();
 
@@ -236,6 +237,37 @@ public:
 
   friend class worker;
   friend class io_worker;
+};
+
+class runtime_builder {
+public:
+  runtime_builder() = default;
+
+  runtime_builder &set_io_worker_count(const size_t count) {
+    io_worker_count_ = count;
+    return *this;
+  }
+
+  runtime_builder &set_worker_count(const size_t count) {
+    worker_count_ = count;
+    return *this;
+  }
+
+  runtime_builder &set_blocking_pool_size(const size_t size) {
+    blocking_pool_size_ = size;
+    return *this;
+  }
+
+  [[nodiscard]] runtime build() const {
+    return runtime(io_worker_count_, worker_count_, blocking_pool_size_);
+  }
+
+private:
+  size_t io_worker_count_ = 1;
+  size_t worker_count_ = std::thread::hardware_concurrency() == 0
+                             ? 1
+                             : std::thread::hardware_concurrency();
+  size_t blocking_pool_size_ = 1;
 };
 
 namespace detail {
