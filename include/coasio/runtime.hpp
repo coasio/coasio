@@ -26,8 +26,8 @@ namespace coasio {
 template <typename T> class JoinHandle;
 
 class worker {
-  constexpr static size_t max_local_tasks_ = 128;
-  const static size_t global_poll_interval_ = 60;
+  constexpr static size_t max_local_tasks_ = 256;
+  constexpr static size_t global_poll_interval_ = 60;
   runtime *rt_;
   std::array<std::coroutine_handle<>, max_local_tasks_> local_queue_;
   size_t local_queue_head_ = 0;
@@ -50,12 +50,10 @@ class worker {
     std::lock_guard lock(local_queue_mutex_);
     if (local_queue_size() == 0)
       return {};
-    const auto h = local_queue_[local_queue_head_];
-    size_t next_head = local_queue_head_ + 1;
-    if (next_head >= max_local_tasks_) {
-      next_head = 0;
-    }
-    local_queue_head_ = next_head;
+
+    const size_t pop_idx = (local_queue_tail_ == 0) ? max_local_tasks_ - 1 : local_queue_tail_ - 1;
+    const auto h = local_queue_[pop_idx];
+    local_queue_tail_ = pop_idx;
     return h;
   }
 
@@ -355,6 +353,14 @@ public:
     if (!h) {
       return;
     }
+
+    if (auto* w = worker::current(); w) {
+      if (w->try_push_local_task(h)) {
+        w->unpark();
+        return;
+      }
+    }
+
     put_task_in_queue(h);
   }
 
