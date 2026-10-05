@@ -214,6 +214,7 @@ class runtime {
   }
 
   template <typename T> T _block_on(task<T> t) {
+    assert(worker::current() == nullptr && "Do not call block_on from inside a worker thread. Use co_await instead.");
     context_guard guard(this);
 
     using promise_t = std::conditional_t<std::is_void_v<T>, std::promise<void>,
@@ -247,6 +248,35 @@ class runtime {
         return;
       }
     }
+  }
+
+  // Queue
+  std::coroutine_handle<> try_get_next_task_from_queue() {
+    std::unique_lock lock(global_tasks_queue_mutex_);
+    if (global_tasks_.empty()) {
+      return {};
+    }
+    auto h = global_tasks_.front();
+    global_tasks_.pop();
+    return h;
+  }
+
+  void put_task_in_queue(std::coroutine_handle<> h) {
+    {
+      std::lock_guard lock(global_tasks_queue_mutex_);
+      global_tasks_.push(h);
+    }
+    notify_one_idle_worker();
+  }
+
+  void register_root(detail::root_node *n) {
+    std::lock_guard lock(roots_mutex_);
+    n->next_ = roots_head_;
+    n->prev_ = nullptr;
+    if (roots_head_)
+      roots_head_->prev_ = n;
+    roots_head_ = n;
+    ++live_roots_;
   }
 
 public:
@@ -337,35 +367,6 @@ public:
     } else {
       schedule(h);
     }
-  }
-
-  // Queue
-  std::coroutine_handle<> try_get_next_task_from_queue() {
-    std::unique_lock lock(global_tasks_queue_mutex_);
-    if (global_tasks_.empty()) {
-      return {};
-    }
-    auto h = global_tasks_.front();
-    global_tasks_.pop();
-    return h;
-  }
-
-  void put_task_in_queue(std::coroutine_handle<> h) {
-    {
-      std::lock_guard lock(global_tasks_queue_mutex_);
-      global_tasks_.push(h);
-    }
-    notify_one_idle_worker();
-  }
-
-  void register_root(detail::root_node *n) {
-    std::lock_guard lock(roots_mutex_);
-    n->next_ = roots_head_;
-    n->prev_ = nullptr;
-    if (roots_head_)
-      roots_head_->prev_ = n;
-    roots_head_ = n;
-    ++live_roots_;
   }
 
   void unregister_root(detail::root_node *n) {
