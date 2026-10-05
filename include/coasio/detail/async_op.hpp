@@ -71,17 +71,18 @@ public:
 
   void await_suspend(std::coroutine_handle<> h) noexcept {
     runtime *rt = current_runtime();
+    worker *w = current_worker();
     assert(rt && "coasio: no current runtime bound to this thread");
 
     auto r = guard_.arm([this] { sig_.emit(asio::cancellation_type::all); });
     if (r == cancel_guard::arm_result::already_cancelled) {
       ec_ = coasio::error::cancelled;
-      runtime_schedule(rt, h);
+      runtime_schedule_in(rt, w, h);
       return;
     }
 
     init_(asio::bind_cancellation_slot(
-        sig_.slot(), [this, h, rt]<typename... Args>(
+        sig_.slot(), [this, h, w, rt]<typename... Args>(
                          const std::error_code &ec, Args &&...result) noexcept {
           guard_.disarm();
           ec_ = ec;
@@ -93,7 +94,7 @@ public:
                   std::forward_as_tuple(std::forward<Args>(result)...)));
             }
           }
-          runtime_schedule(rt, h);
+          runtime_schedule_in(rt, w, h);
         }));
   }
 

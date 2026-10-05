@@ -21,6 +21,7 @@ struct waiter {
   waiter *next{nullptr};
   std::coroutine_handle<> handle{};
   runtime *rt{nullptr};
+  worker *w{nullptr};
   ptrdiff_t requested_permits{1};
   bool acquired{false};
   bool cancelled{false};
@@ -73,7 +74,7 @@ struct state {
       acquired = w->acquired;
     }
     for (size_t i = 0; i < n; ++i)
-      coasio::detail::runtime_schedule(buf[i].rt, buf[i].h);
+      coasio::detail::runtime_schedule_in(buf[i].rt, buf[i].w, buf[i].h);
     return acquired;
   }
 
@@ -100,7 +101,7 @@ struct state {
       count = grant_locked(buf, 16);
     }
     for (size_t i = 0; i < count; ++i)
-      coasio::detail::runtime_schedule(buf[i].rt, buf[i].h);
+      coasio::detail::runtime_schedule_in(buf[i].rt, buf[i].w, buf[i].h);
   }
 
   void dequeue_or_return(waiter *w) noexcept {
@@ -118,7 +119,7 @@ struct state {
       }
     }
     for (size_t i = 0; i < n; ++i)
-      coasio::detail::runtime_schedule(buf[i].rt, buf[i].h);
+      coasio::detail::runtime_schedule_in(buf[i].rt, buf[i].w, buf[i].h);
   }
 
   [[nodiscard]] size_t available_permits() const noexcept {
@@ -128,6 +129,7 @@ struct state {
 private:
   struct to_wake {
     runtime *rt{};
+    worker *w{};
     std::coroutine_handle<> h;
   };
 
@@ -175,9 +177,9 @@ private:
       if (w == self)
         continue;
       if (n < cap)
-        out[n++] = {w->rt, w->handle};
+        out[n++] = {w->rt, w->w, w->handle};
       else
-        coasio::detail::runtime_schedule(w->rt, w->handle);
+        coasio::detail::runtime_schedule_in(w->rt, w->w, w->handle);
     }
     return n;
   }
@@ -282,10 +284,11 @@ public:
     bool await_suspend(std::coroutine_handle<> h) noexcept {
       w_.handle = h;
       w_.rt = coasio::detail::current_runtime();
+      w_.w = coasio::detail::current_worker();
 
       auto r = guard_.arm([this] {
         if (st_->try_cancel_waiter(&w_))
-          coasio::detail::runtime_schedule(w_.rt, w_.handle);
+          coasio::detail::runtime_schedule_in(w_.rt, w_.w, w_.handle);
       });
       if (r == cancel_guard::arm_result::already_cancelled)
         return false;

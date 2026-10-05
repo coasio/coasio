@@ -26,6 +26,7 @@ template <typename T> struct state {
   bool cancelled_{false};
   std::coroutine_handle<> waiter_;
   runtime *rt_{nullptr};
+  worker *w_{nullptr};
 
   explicit state() noexcept = default;
 
@@ -44,7 +45,7 @@ template <typename T> struct state {
       to_wake = std::exchange(waiter_, nullptr);
     }
     if (to_wake)
-      coasio::detail::runtime_schedule(rt_, to_wake);
+      coasio::detail::runtime_schedule_in(rt_, w_, to_wake);
     return {};
   }
 
@@ -58,7 +59,7 @@ template <typename T> struct state {
       to_wake = std::exchange(waiter_, nullptr);
     }
     if (to_wake)
-      coasio::detail::runtime_schedule(rt_, to_wake);
+      coasio::detail::runtime_schedule_in(rt_, w_, to_wake);
   }
 
   void mark_receiver_dropped() {
@@ -154,8 +155,10 @@ public:
   auto operator co_await() & = delete;
 
   auto operator co_await() && noexcept {
-    if (state_)
+    if (state_) {
       state_->rt_ = coasio::detail::current_runtime();
+      state_->w_ = coasio::detail::current_worker();
+    }
 
     struct awaiter {
       std::shared_ptr<detail::state<T>> state_;
@@ -185,7 +188,7 @@ public:
       bool await_suspend(std::coroutine_handle<> h) noexcept {
         auto r = guard_.arm([st = state_.get(), h] {
           if (st->cancel_and_take_waiter())
-            coasio::detail::runtime_schedule(st->rt_, h);
+            coasio::detail::runtime_schedule_in(st->rt_, st->w_, h);
         });
         if (r == cancel_guard::arm_result::already_cancelled)
           return false;

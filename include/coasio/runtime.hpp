@@ -9,8 +9,8 @@
 #include <future>
 #include <iostream>
 #include <mutex>
-#include <optional>
 #include <queue>
+#include <ranges>
 #include <thread>
 #include <vector>
 
@@ -26,12 +26,135 @@ namespace coasio {
 template <typename T> class JoinHandle;
 
 class worker {
-  runtime *runtime_;
+  constexpr static size_t max_local_tasks_ = 128;
+  const static size_t global_poll_interval_ = 60;
+  runtime *rt_;
+  std::array<std::coroutine_handle<>, max_local_tasks_> local_queue_;
+  size_t local_queue_head_ = 0;
+  size_t local_queue_tail_ = 0;
+  std::mutex local_queue_mutex_;
+  size_t next_victim_index_ = 0;
+
+  std::mutex park_mutex_;
+  std::condition_variable park_cv_;
+  std::atomic<bool> parked_{false};
+
+  static inline thread_local worker *current_worker_ = nullptr;
+
+  /**
+   *
+   * @return std::coroutine_handle<> if a task was found, or nullptr if the
+   * runtime is stopping
+   */
+  std::coroutine_handle<> try_pop_local_task() {
+    std::lock_guard lock(local_queue_mutex_);
+    if (local_queue_size() == 0)
+      return {};
+    const auto h = local_queue_[local_queue_head_];
+    size_t next_head = local_queue_head_ + 1;
+    if (next_head >= max_local_tasks_) {
+      next_head = 0;
+    }
+    local_queue_head_ = next_head;
+    return h;
+  }
+
+  bool try_push_local_task(std::coroutine_handle<> h) {
+    std::lock_guard lock(local_queue_mutex_);
+    size_t next_tail = local_queue_tail_ + 1;
+    if (next_tail >= max_local_tasks_) {
+      next_tail = 0;
+    }
+
+    if (next_tail == local_queue_head_) {
+      return false;
+    }
+
+    local_queue_[local_queue_tail_] = h;
+    local_queue_tail_ = next_tail;
+    return true;
+  }
+
+  /**
+   * This function assumes the stealer's local queue is empty and will override
+   * it. The stealer is supposed to acquire its internal queue mutex for the
+   * lifetime of the call.
+   *
+   * This function will not force a steal if it can't acquire the queue mutex in
+   * the first try and will return false
+   *
+   * @param stealer a pointer to the worker who is performing the action
+   * @return true if tasks were successfully stolen, false otherwise
+   */
+  [[nodiscard]] bool try_steal_into(worker *stealer) {
+    const std::unique_lock lock(local_queue_mutex_, std::try_to_lock);
+    if (!lock.owns_lock())
+      return false;
+    if (local_queue_size() != 0)
+      return false;
+
+    const size_t count = local_queue_size();
+    if (count == 0)
+      return false;
+
+    const size_t to_steal = std::max<size_t>(1, count / 2);
+
+    stealer->local_queue_head_ = 0;
+    stealer->local_queue_tail_ = to_steal;
+
+    size_t current_head = local_queue_head_;
+    for (size_t i = 0; i < to_steal; i++) {
+      stealer->local_queue_[i] = local_queue_[current_head];
+      current_head++;
+      if (current_head >= max_local_tasks_) {
+        current_head = 0;
+      }
+    }
+    local_queue_head_ = current_head;
+    return true;
+  }
+
+  std::coroutine_handle<> try_steal_from_peers();
+
+  /**
+   * This function assumes the mutex is locked.
+   */
+  [[nodiscard]] size_t local_queue_size() const {
+    if (local_queue_tail_ >= local_queue_head_) {
+      return local_queue_tail_ - local_queue_head_;
+    }
+    return (max_local_tasks_ - local_queue_head_) + local_queue_tail_;
+  }
+
+  bool unpark() {
+    if (parked_.exchange(false, std::memory_order_seq_cst)) {
+      {
+        std::lock_guard lock(park_mutex_);
+      }
+      park_cv_.notify_one();
+      return true;
+    }
+    return false;
+  }
+
+  void park();
 
 public:
-  explicit worker(runtime *runtime) : runtime_(runtime) {}
+  explicit worker(runtime *runtime) : rt_(runtime) {}
 
-  void run() const;
+  void run();
+
+  struct context_guard {
+    worker *prev_;
+    explicit context_guard(worker *w) noexcept : prev_(current_worker_) {
+      current_worker_ = w;
+    }
+    ~context_guard() noexcept { current_worker_ = prev_; }
+  };
+
+  static worker *current() noexcept { return current_worker_; }
+
+  friend class runtime;
 };
 
 class io_worker {
@@ -41,17 +164,18 @@ public:
   explicit io_worker(runtime *runtime) : runtime_(runtime) {}
 
   void run() const;
+
+  friend class runtime;
 };
 
 class runtime {
   std::queue<std::coroutine_handle<>> global_tasks_;
   std::mutex global_tasks_queue_mutex_;
-  std::condition_variable global_tasks_queue_cv_;
   std::atomic<bool> stop_requested_{false};
   asio::io_context io_context_;
   asio::executor_work_guard<asio::io_context::executor_type> work_guard_;
   std::vector<std::thread> io_worker_threads_;
-  std::vector<std::thread> worker_threads_;
+  std::vector<std::pair<std::thread, std::unique_ptr<worker>>> worker_threads_;
 
   std::mutex roots_mutex_;
   detail::root_node *roots_head_ = nullptr;
@@ -115,6 +239,16 @@ class runtime {
     return future.get();
   }
 
+  auto get_workers() { return worker_threads_ | std::views::values; }
+
+  void notify_one_idle_worker() {
+    for (const auto &w : get_workers()) {
+      if (w->unpark()) {
+        return;
+      }
+    }
+  }
+
 public:
   explicit runtime(size_t io_worker_count = 1, size_t worker_count = 0,
                    size_t blocking_pool_size = 1);
@@ -122,6 +256,8 @@ public:
   ~runtime();
 
   static runtime *current() noexcept { return current_runtime_; }
+
+  static worker *current_worker() noexcept { return worker::current(); }
 
   struct context_guard {
     runtime *prev_;
@@ -186,21 +322,28 @@ public:
   }
 
   void schedule(std::coroutine_handle<> h) {
-    if (!h)
+    if (!h) {
       return;
+    }
     put_task_in_queue(h);
   }
 
+  void schedule_in(worker *w, std::coroutine_handle<> h) {
+    if (!h) {
+      return;
+    }
+    if (w->try_push_local_task(h)) {
+      w->unpark();
+    } else {
+      schedule(h);
+    }
+  }
+
   // Queue
-  std::optional<std::coroutine_handle<>> get_next_task_from_queue() {
+  std::coroutine_handle<> try_get_next_task_from_queue() {
     std::unique_lock lock(global_tasks_queue_mutex_);
-    global_tasks_queue_cv_.wait(lock, [this] {
-      return !global_tasks_.empty() ||
-             stop_requested_.load(std::memory_order_acquire);
-    });
-    if (stop_requested_.load(std::memory_order_acquire) &&
-        global_tasks_.empty()) {
-      return std::nullopt;
+    if (global_tasks_.empty()) {
+      return {};
     }
     auto h = global_tasks_.front();
     global_tasks_.pop();
@@ -208,9 +351,11 @@ public:
   }
 
   void put_task_in_queue(std::coroutine_handle<> h) {
-    std::unique_lock lock(global_tasks_queue_mutex_);
-    global_tasks_.push(h);
-    global_tasks_queue_cv_.notify_one();
+    {
+      std::lock_guard lock(global_tasks_queue_mutex_);
+      global_tasks_.push(h);
+    }
+    notify_one_idle_worker();
   }
 
   void register_root(detail::root_node *n) {
@@ -273,12 +418,18 @@ private:
 namespace detail {
 inline runtime *current_runtime() noexcept { return runtime::current(); }
 
-inline void runtime_schedule(runtime *rt, std::coroutine_handle<> h) noexcept {
+inline worker *current_worker() noexcept { return runtime::current_worker(); }
+
+inline void runtime_schedule(runtime *rt, const std::coroutine_handle<> h) {
   rt->schedule(h);
 }
 
-inline void runtime_unregister_root(runtime *rt,
-                                    detail::root_node *n) noexcept {
+inline void runtime_schedule_in(runtime *rt, worker *w,
+                                const std::coroutine_handle<> h) {
+  rt->schedule_in(w, h);
+}
+
+inline void runtime_unregister_root(runtime *rt, detail::root_node *n) {
   rt->unregister_root(n);
 }
 } // namespace detail

@@ -57,7 +57,7 @@ TEST_CASE("permit forget skips release", "[sync][semaphore]") {
   REQUIRE(p.has_value());
   p->forget();
   p.reset();
-  REQUIRE(sem.available_permits() == 1); // only the 1 not acquired remains
+  REQUIRE(sem.available_permits() == 1);
 }
 
 TEST_CASE("permit merge", "[sync][semaphore]") {
@@ -77,9 +77,9 @@ TEST_CASE("permit move transfers ownership", "[sync][semaphore]") {
   auto a = sem.try_acquire(2); // optional<semaphore_permit>
   {
     semaphore_permit b(std::move(*a));
-    a.reset(); // optional::reset — destroys moved-from permit (no release)
+    a.reset();
     REQUIRE(sem.available_permits() == 0);
-  } // b destructs here → releases 2
+  }
   REQUIRE(sem.available_permits() == 2);
 }
 
@@ -176,7 +176,6 @@ TEST_CASE("release after cancelled waiter goes to next waiter",
       co_return;
     }(&sem));
 
-    // Use parameters to avoid dangling lambda closure capture
     auto h2 = coasio::spawn(
         [](semaphore *s, std::atomic<bool> *got) -> coasio::task<void> {
           auto p = co_await s->acquire();
@@ -207,7 +206,6 @@ TEST_CASE("stress: many concurrent acquirers", "[sync][semaphore][stress]") {
     std::vector<coasio::JoinHandle<void>> handles;
     handles.reserve(N);
     for (int i = 0; i < N; ++i) {
-      // Pass explicitly via arguments, NO `[&]` captures!
       handles.push_back(coasio::spawn(
           [](semaphore *s, std::atomic<int> *d) -> coasio::task<void> {
             auto p = co_await s->acquire();
