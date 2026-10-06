@@ -88,8 +88,6 @@ class worker {
     const std::unique_lock lock(local_queue_mutex_, std::try_to_lock);
     if (!lock.owns_lock())
       return false;
-    if (local_queue_size() != 0)
-      return false;
 
     const size_t count = local_queue_size();
     if (count == 0)
