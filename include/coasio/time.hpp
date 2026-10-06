@@ -104,22 +104,23 @@ inline auto sleep(const std::chrono::milliseconds ms) {
 
     void await_suspend(std::coroutine_handle<> h) noexcept {
       runtime *rt = detail::current_runtime();
+      worker *w = detail::current_worker();
       assert(rt && "coasio: no current runtime bound to this thread");
 
       auto r = guard_.arm([this] { sig_.emit(asio::cancellation_type::all); });
       if (r == cancel_guard::arm_result::already_cancelled) {
         ec_ = coasio::error::cancelled;
-        detail::runtime_schedule(rt, h);
+        detail::runtime_schedule_in(rt, w, h);
         return;
       }
 
       timer_ =
           std::make_unique<asio::steady_timer>(rt->get_io_context(), duration_);
       timer_->async_wait(asio::bind_cancellation_slot(
-          sig_.slot(), [this, h, rt](const asio::error_code &ec) {
+          sig_.slot(), [this, h, w, rt](const asio::error_code &ec) {
             guard_.disarm();
             ec_ = ec;
-            detail::runtime_schedule(rt, h);
+            detail::runtime_schedule_in(rt, w, h);
           }));
     }
 

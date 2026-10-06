@@ -52,7 +52,21 @@ coasio::task<void> client(const size_t id, const size_t message_size) {
   }
 }
 
+#include <coasio/filesystem.hpp>
+
 COASIO_MAIN$() {
+  auto maybeSize = co_await coasio::filesystem::file_size(
+      R"(C:\dev\cpp\coasio\examples\echo_client.cpp)");
+  if (!maybeSize) {
+    std::cerr << "[Error] file_size failed: " << maybeSize.error().message()
+              << std::endl;
+    co_return 1;
+  }
+  std::cout << "file size: " << maybeSize.value() << std::endl;
+  co_return 0;
+}
+
+coasio::task<int> bfdhjh() {
   constexpr size_t client_number = 20;
   constexpr size_t message_size = 1024;
   for (size_t i = 0; i < client_number; i++) {

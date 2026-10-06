@@ -16,7 +16,7 @@ struct root_node {
 };
 
 // Defined in runtime.hpp
-void runtime_unregister_root(runtime *rt, detail::root_node *n) noexcept;
+void runtime_unregister_root(runtime *rt, detail::root_node *n);
 } // namespace detail
 } // namespace coasio
 

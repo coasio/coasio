@@ -1,8 +1,8 @@
 # CoAsio
 
-[![Windows MSVC](https://github.com/ttheghost/coasio/actions/workflows/ci-msvc.yml/badge.svg)](https://github.com/ttheghost/coasio/actions/workflows/ci-msvc.yml)
-[![Linux GCC](https://github.com/ttheghost/coasio/actions/workflows/ci-gcc.yml/badge.svg)](https://github.com/ttheghost/coasio/actions/workflows/ci-gcc.yml)
-<!--[![Linux Clang](https://github.com/ttheghost/coasio/actions/workflows/ci-clang.yml/badge.svg)](https://github.com/ttheghost/coasio/actions/workflows/ci-clang.yml)-->
+[![Windows MSVC](https://github.com/coasio/coasio/actions/workflows/ci-msvc.yml/badge.svg)](https://github.com/coasio/coasio/actions/workflows/ci-msvc.yml)
+[![Linux GCC](https://github.com/coasio/coasio/actions/workflows/ci-gcc.yml/badge.svg)](https://github.com/coasio/coasio/actions/workflows/ci-gcc.yml)
+<!--[![Linux Clang](https://github.com/coasio/coasio/actions/workflows/ci-clang.yml/badge.svg)](https://github.com/coasio/coasio/actions/workflows/ci-clang.yml)-->
 
 A C++23 coroutine runtime built on top of Asio.
 

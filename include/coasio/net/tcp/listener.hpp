@@ -61,24 +61,25 @@ public:
       }
 
       void await_suspend(std::coroutine_handle<> h) noexcept {
-        runtime *rt = runtime::current();
+        runtime *rt = detail::current_runtime();
+        worker *w = detail::current_worker();
         auto r =
             guard_.arm([this] { sig_.emit(asio::cancellation_type::all); });
         if (r == cancel_guard::arm_result::already_cancelled) {
           ec_ = asio::error::operation_aborted;
-          rt->schedule(h);
+          rt->schedule_in(w, h);
           return;
         }
 
         listener_.asio_handle().async_accept(asio::bind_cancellation_slot(
-            sig_.slot(), [h, rt, this](const asio::error_code &ec,
-                                       asio::ip::tcp::socket sock) {
+            sig_.slot(), [this, h, w, rt](const asio::error_code &ec,
+                                          asio::ip::tcp::socket sock) {
               guard_.disarm();
               ec_ = ec;
               if (!ec_) {
                 socket_ = socket{(std::move(sock))};
               }
-              rt->schedule(h);
+              detail::runtime_schedule_in(rt, w, h);
             }));
       }
 
