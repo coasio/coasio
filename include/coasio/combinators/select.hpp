@@ -6,7 +6,6 @@
 #include <mutex>
 #include <optional>
 #include <variant>
-#include <vector>
 
 #include "coasio.hpp"
 #include "coasio/detail/combinator_common.hpp"
@@ -69,6 +68,8 @@ struct uncancelled_waiter {
 };
 
 template <typename... Ts> struct select_state {
+  static constexpr std::size_t N = sizeof...(Ts);
+
   std::mutex mtx;
   bool completed = false;
   bool aborted = false;
@@ -78,8 +79,8 @@ template <typename... Ts> struct select_state {
   using variant_t = select_variant_t<Ts...>;
   std::optional<variant_t> result;
 
-  std::vector<JoinHandle<void>> handles;
-  std::atomic<std::size_t> running_workers{sizeof...(Ts)};
+  std::array<JoinHandle<void>, N> handles;
+  std::atomic<std::size_t> running_workers{N};
 
   sync::oneshot::sender<void> tx;
   sync::oneshot::receiver<void> rx;
@@ -93,22 +94,16 @@ template <typename... Ts> struct select_state {
   }
 
   void abort_all() {
-    std::vector<std::size_t> to_abort;
     {
       std::lock_guard lk(mtx);
       aborted = true;
-      to_abort.reserve(handles.size());
-      for (std::size_t j = 0; j < handles.size(); ++j) {
-        to_abort.push_back(j);
-      }
     }
-    for (std::size_t j : to_abort) {
-      handles[j].abort();
+    for (auto &h : handles) {
+      h.abort();
     }
   }
 
   template <std::size_t I, typename... Args> void set_winner(Args &&...args) {
-    std::vector<std::size_t> to_abort;
     {
       std::lock_guard lk(mtx);
       if (completed || aborted)
@@ -127,34 +122,27 @@ template <typename... Ts> struct select_state {
       }
 
       completed = true;
-      winner_index = I;
-      for (std::size_t j = 0; j < handles.size(); ++j) {
-        if (j != I)
-          to_abort.push_back(j);
-      }
     }
-    for (std::size_t j : to_abort) {
-      handles[j].abort();
+    for (std::size_t j = 0; j < N; ++j) {
+      if (j != I) {
+        handles[j].abort();
+      }
     }
     auto _ = tx.send();
   }
 
-  void set_exception(const std::size_t index, const std::exception_ptr &ep) {
-    std::vector<std::size_t> to_abort;
+  void set_exception(const std::size_t idx, const std::exception_ptr &ep) {
     {
       std::lock_guard lk(mtx);
       if (completed || aborted)
         return;
       completed = true;
-      winner_index = index;
       exception = ep;
-      for (std::size_t j = 0; j < handles.size(); ++j) {
-        if (j != index)
-          to_abort.push_back(j);
-      }
     }
-    for (std::size_t j : to_abort) {
-      handles[j].abort();
+    for (std::size_t j = 0; j < N; ++j) {
+      if (j != idx) {
+        handles[j].abort();
+      }
     }
     auto _ = tx.send();
   }
@@ -183,14 +171,14 @@ template <typename... Ts, std::size_t... Is>
 auto select_impl(std::index_sequence<Is...>, task<Ts>... tasks)
     -> task<typename select_state<Ts...>::variant_t> {
   using state_t = select_state<Ts...>;
-  using variant_t = typename state_t::variant_t;
+  using variant_t = state_t::variant_t;
 
   auto state = std::make_shared<state_t>();
 
   {
     std::lock_guard lk(state->mtx);
-    (state->handles.push_back(
-         coasio::spawn(select_worker<Is>(std::move(tasks), state))),
+    ((state->handles[Is] =
+          coasio::spawn(select_worker<Is>(std::move(tasks), state))),
      ...);
   }
 
@@ -202,7 +190,6 @@ auto select_impl(std::index_sequence<Is...>, task<Ts>... tasks)
   co_await std::move(state->rx);
   guard.disarm();
 
-  // Wait for all workers to finish their unwind/cleanup before returning.
   co_await uncancelled_waiter{state->done_state};
 
   std::unique_lock lk(state->mtx);
