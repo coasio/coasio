@@ -51,7 +51,8 @@ class worker {
     if (local_queue_size() == 0)
       return {};
 
-    const size_t pop_idx = (local_queue_tail_ == 0) ? max_local_tasks_ - 1 : local_queue_tail_ - 1;
+    const size_t pop_idx =
+        (local_queue_tail_ == 0) ? max_local_tasks_ - 1 : local_queue_tail_ - 1;
     const auto h = local_queue_[pop_idx];
     local_queue_tail_ = pop_idx;
     return h;
@@ -210,7 +211,9 @@ class runtime {
   }
 
   template <typename T> T _block_on(task<T> t) {
-    assert(worker::current() == nullptr && "Do not call block_on from inside a worker thread. Use co_await instead.");
+    assert(worker::current() == nullptr &&
+           "Do not call block_on from inside a worker thread. Use co_await "
+           "instead.");
     context_guard guard(this);
 
     using promise_t = std::conditional_t<std::is_void_v<T>, std::promise<void>,
@@ -352,7 +355,7 @@ public:
       return;
     }
 
-    if (auto* w = worker::current(); w) {
+    if (auto *w = worker::current(); w) {
       if (w->try_push_local_task(h)) {
         w->unpark();
         return;
