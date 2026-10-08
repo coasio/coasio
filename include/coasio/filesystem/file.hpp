@@ -3,6 +3,7 @@
 
 #include <expected>
 #include <filesystem>
+#include <ranges>
 #include <span>
 #include <stdexcept>
 
@@ -85,12 +86,26 @@ public:
     co_return file{std::move(*file_)};
   }
 
+  template <std::ranges::contiguous_range R>
+    requires std::is_convertible_v<std::ranges::range_reference_t<R>,
+                                   std::byte &>
+  auto read_some(R &&buffer) {
+    return read_some(std::span{std::ranges::data(buffer), std::size(buffer)});
+  }
+
   auto read_some(std::span<std::byte> buffer) {
     return detail::async_op<size_t>(
         [this, buffer]<typename Args>(Args &&token) {
           asio_handle().async_read_some(asio::buffer(buffer),
                                         std::forward<Args>(token));
         });
+  }
+
+  template <std::ranges::contiguous_range R>
+    requires std::is_convertible_v<std::ranges::range_reference_t<R>,
+                                   const std::byte &>
+  auto write_some(R &&buffer) {
+    return write_some(std::span{std::ranges::data(buffer), std::size(buffer)});
   }
 
   auto write_some(std::span<const std::byte> buffer) {
@@ -101,12 +116,26 @@ public:
         });
   }
 
+  template <std::ranges::contiguous_range R>
+    requires std::is_convertible_v<std::ranges::range_reference_t<R>,
+                                   std::byte &>
+  auto read(R &&buffer) {
+    return read(std::span{std::ranges::data(buffer), std::size(buffer)});
+  }
+
   auto read(std::span<std::byte> buffer) {
     return detail::async_op<size_t>(
         [this, buffer]<typename Args>(Args &&token) {
           asio::async_read(asio_handle(), asio::buffer(buffer),
                            std::forward<Args>(token));
         });
+  }
+
+  template <std::ranges::contiguous_range R>
+    requires std::is_convertible_v<std::ranges::range_reference_t<R>,
+                                   const std::byte &>
+  auto write(R &&buffer) {
+    return write(std::span{std::ranges::data(buffer), std::size(buffer)});
   }
 
   auto write(std::span<const std::byte> buffer) {
@@ -221,12 +250,28 @@ public:
     co_return random_access_file{std::move(*file_)};
   }
 
+  template <std::ranges::contiguous_range R>
+    requires std::is_convertible_v<std::ranges::range_reference_t<R>,
+                                   std::byte &>
+  auto read_some_at(uint64_t offset, R &&buffer) {
+    return read_some_at(
+        offset, std::span{std::ranges::data(buffer), std::size(buffer)});
+  }
+
   auto read_some_at(uint64_t offset, std::span<std::byte> buffer) {
     return detail::async_op<size_t>(
         [this, offset, buffer]<typename Args>(Args &&token) {
           asio_handle().async_read_some_at(offset, asio::buffer(buffer),
                                            std::forward<Args>(token));
         });
+  }
+
+  template <std::ranges::contiguous_range R>
+    requires std::is_convertible_v<std::ranges::range_reference_t<R>,
+                                   const std::byte &>
+  auto write_some_at(uint64_t offset, R &&buffer) {
+    return write_some_at(
+        offset, std::span{std::ranges::data(buffer), std::size(buffer)});
   }
 
   auto write_some_at(uint64_t offset, std::span<const std::byte> buffer) {
@@ -237,12 +282,28 @@ public:
         });
   }
 
+  template <std::ranges::contiguous_range R>
+    requires std::is_convertible_v<std::ranges::range_reference_t<R>,
+                                   std::byte &>
+  auto read(uint64_t offset, R &&buffer) {
+    return read(offset,
+                std::span{std::ranges::data(buffer), std::size(buffer)});
+  }
+
   auto read(uint64_t offset, std::span<std::byte> buffer) {
     return detail::async_op<size_t>(
         [this, offset, buffer]<typename Args>(Args &&token) {
           asio::async_read_at(asio_handle(), offset, asio::buffer(buffer),
                               std::forward<Args>(token));
         });
+  }
+
+  template <std::ranges::contiguous_range R>
+    requires std::is_convertible_v<std::ranges::range_reference_t<R>,
+                                   const std::byte &>
+  auto write(uint64_t offset, R &&buffer) {
+    return write(offset,
+                 std::span{std::ranges::data(buffer), std::size(buffer)});
   }
 
   auto write(uint64_t offset, std::span<const std::byte> buffer) {
