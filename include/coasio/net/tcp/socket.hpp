@@ -13,6 +13,7 @@
 #include <asio/write.hpp>
 
 #include "coasio/detail/async_op.hpp"
+#include "coasio/detail/byte_like.hpp"
 #include "coasio/net/helper.hpp"
 #include "endpoint.hpp"
 #include "resolver.hpp"
@@ -85,24 +86,29 @@ public:
   }
 
   template <std::ranges::contiguous_range R>
-    requires std::is_convertible_v<std::ranges::range_reference_t<R>,
-                                   std::byte &>
+    requires coasio::detail::byte_like<std::ranges::range_reference_t<R>> &&
+             (!std::is_const_v<
+                 std::remove_reference_t<std::ranges::range_reference_t<R>>>)
   auto read(R &&buffer) {
-    return read(std::span{std::ranges::data(buffer), std::size(buffer)});
+    return read(std::as_writable_bytes(
+        std::span{std::ranges::data(buffer), std::ranges::size(buffer)}));
   }
 
   auto read(std::span<std::byte> buffer) {
     return detail::async_op<size_t>(
         [this, buffer]<typename Args>(Args &&token) {
-          asio::async_read(asio_handle(), buffer, std::forward<Args>(token));
+          asio::async_read(asio_handle(), asio::buffer(buffer),
+                           std::forward<Args>(token));
         });
   }
 
   template <std::ranges::contiguous_range R>
-    requires std::is_convertible_v<std::ranges::range_reference_t<R>,
-                                   std::byte &>
+    requires coasio::detail::byte_like<std::ranges::range_reference_t<R>> &&
+             (!std::is_const_v<
+                 std::remove_reference_t<std::ranges::range_reference_t<R>>>)
   auto read_some(R &&buffer) {
-    return read_some(std::span{std::ranges::data(buffer), std::size(buffer)});
+    return read_some(std::as_writable_bytes(
+        std::span{std::ranges::data(buffer), std::ranges::size(buffer)}));
   }
 
   auto read_some(std::span<std::byte> buffer) {
@@ -116,10 +122,10 @@ public:
   // TODO: read_until
 
   template <std::ranges::contiguous_range R>
-    requires std::is_convertible_v<std::ranges::range_reference_t<R>,
-                                   const std::byte &>
-  auto write(R &&buffer) {
-    return write(std::span{std::ranges::data(buffer), std::size(buffer)});
+    requires coasio::detail::byte_like<std::ranges::range_reference_t<R>>
+  auto write(const R &buffer) {
+    return write(std::as_bytes(
+        std::span{std::ranges::data(buffer), std::ranges::size(buffer)}));
   }
 
   auto write(std::span<const std::byte> buffer) {
@@ -131,10 +137,10 @@ public:
   }
 
   template <std::ranges::contiguous_range R>
-    requires std::is_convertible_v<std::ranges::range_reference_t<R>,
-                                   const std::byte &>
-  auto write_some(R &&buffer) {
-    return write_some(std::span{std::ranges::data(buffer), std::size(buffer)});
+    requires coasio::detail::byte_like<std::ranges::range_reference_t<R>>
+  auto write_some(const R &buffer) {
+    return write_some(std::as_bytes(
+        std::span{std::ranges::data(buffer), std::ranges::size(buffer)}));
   }
 
   auto write_some(std::span<const std::byte> buffer) {
