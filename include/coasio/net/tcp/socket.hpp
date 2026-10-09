@@ -1,6 +1,8 @@
 #ifndef COASIO_NET_TCP_SOCKET_HPP
 #define COASIO_NET_TCP_SOCKET_HPP
+
 #include <expected>
+#include <ranges>
 #include <span>
 #include <string>
 #include <string_view>
@@ -11,6 +13,7 @@
 #include <asio/write.hpp>
 
 #include "coasio/detail/async_op.hpp"
+#include "coasio/detail/byte_like.hpp"
 #include "coasio/net/helper.hpp"
 #include "endpoint.hpp"
 #include "resolver.hpp"
@@ -82,11 +85,30 @@ public:
     return {};
   }
 
+  template <std::ranges::contiguous_range R>
+    requires coasio::detail::byte_like<std::ranges::range_reference_t<R>> &&
+             (!std::is_const_v<
+                 std::remove_reference_t<std::ranges::range_reference_t<R>>>)
+  auto read(R &&buffer) {
+    return read(std::as_writable_bytes(
+        std::span{std::ranges::data(buffer), std::ranges::size(buffer)}));
+  }
+
   auto read(std::span<std::byte> buffer) {
     return detail::async_op<size_t>(
         [this, buffer]<typename Args>(Args &&token) {
-          asio::async_read(asio_handle(), buffer, std::forward<Args>(token));
+          asio::async_read(asio_handle(), asio::buffer(buffer),
+                           std::forward<Args>(token));
         });
+  }
+
+  template <std::ranges::contiguous_range R>
+    requires coasio::detail::byte_like<std::ranges::range_reference_t<R>> &&
+             (!std::is_const_v<
+                 std::remove_reference_t<std::ranges::range_reference_t<R>>>)
+  auto read_some(R &&buffer) {
+    return read_some(std::as_writable_bytes(
+        std::span{std::ranges::data(buffer), std::ranges::size(buffer)}));
   }
 
   auto read_some(std::span<std::byte> buffer) {
@@ -99,12 +121,26 @@ public:
 
   // TODO: read_until
 
+  template <std::ranges::contiguous_range R>
+    requires coasio::detail::byte_like<std::ranges::range_reference_t<R>>
+  auto write(const R &buffer) {
+    return write(std::as_bytes(
+        std::span{std::ranges::data(buffer), std::ranges::size(buffer)}));
+  }
+
   auto write(std::span<const std::byte> buffer) {
     return detail::async_op<size_t>(
         [this, buffer]<typename Args>(Args &&token) {
           asio::async_write(asio_handle(), asio::buffer(buffer),
                             std::forward<Args>(token));
         });
+  }
+
+  template <std::ranges::contiguous_range R>
+    requires coasio::detail::byte_like<std::ranges::range_reference_t<R>>
+  auto write_some(const R &buffer) {
+    return write_some(std::as_bytes(
+        std::span{std::ranges::data(buffer), std::ranges::size(buffer)}));
   }
 
   auto write_some(std::span<const std::byte> buffer) {
@@ -125,7 +161,7 @@ public:
     std::error_code ec_;
     size_t bytes_available = socket_.available(ec_);
     if (ec_)
-      return std::unexpected(std::move(ec_));
+      return std::unexpected(ec_);
     return bytes_available;
   }
 
@@ -133,7 +169,7 @@ public:
     std::error_code ec_;
     socket_.shutdown(type, ec_);
     if (ec_)
-      return std::unexpected(std::move(ec_));
+      return std::unexpected(ec_);
     return {};
   }
 
@@ -141,17 +177,17 @@ public:
     std::error_code ec_;
     socket_.close(ec_);
     if (ec_)
-      return std::unexpected(std::move(ec_));
+      return std::unexpected(ec_);
     return {};
   }
 
-  bool is_open() const { return socket_.is_open(); }
+  [[nodiscard]] bool is_open() const { return socket_.is_open(); }
 
   std::expected<endpoint, std::error_code> remote_endpoint() const noexcept {
     asio::error_code ec;
     auto ep = socket_.remote_endpoint(ec);
     if (ec)
-      return std::unexpected{ec};
+      return std::unexpected(ec);
     return endpoint{ep};
   }
 
@@ -159,7 +195,7 @@ public:
     asio::error_code ec;
     auto ep = socket_.local_endpoint(ec);
     if (ec)
-      return std::unexpected{ec};
+      return std::unexpected(ec);
     return endpoint{ep};
   }
 
