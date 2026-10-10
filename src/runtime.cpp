@@ -51,7 +51,9 @@ std::coroutine_handle<> coasio::worker::try_steal_from_peers() {
     bool stolen = false;
     {
       std::lock_guard lock(local_queue_mutex_);
-      if (local_queue_size() != 0) break;
+      if (local_queue_size() != 0) {
+        break;
+      }
       worker *victim = workers[next_victim_index_].get();
       stolen = victim->try_steal_into(this);
     }
