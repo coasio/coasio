@@ -16,10 +16,10 @@ public:
   using results_type = asio::ip::basic_resolver<protocol_type>::results_type;
 
   static base_resolver create() noexcept {
-    return base_resolver{detail::current_runtime()->get_current_io_context()};
+    return base_resolver{runtime::get_current_io_context()};
   }
 
-  auto resolve(std::string_view host, std::string_view service) {
+  auto resolve(const std::string_view host, const std::string_view service) {
     return detail::async_op<results_type>(
         [this, host = std::string(host),
          service = std::string(service)]<typename Args>(Args &&token) {
