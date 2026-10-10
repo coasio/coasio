@@ -1,0 +1,44 @@
+
+---
+title: Coasio
+description: A C++23 coroutine runtime built on Asio, with a separate scheduler for coroutine execution.
+template: splash
+hero:
+  title: Coasio
+  tagline: Structured asynchronous programming for modern C++.
+  actions:
+    - text: Get started
+      link: /getting-started/
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/coasio/coasio
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+Coasio is a C++23 coroutine runtime built on Asio. It uses Asio for asynchronous I/O and timers while providing a separate scheduler for coroutine execution.
+
+<CardGrid stagger>
+  <Card title="Coroutine tasks" icon="puzzle">
+    Compose asynchronous operations with `co_await`, return values, and propagate failures.
+  </Card>
+  <Card title="Scheduled execution" icon="workflow">
+    Spawn independent tasks and execute coroutine work through a dedicated worker pool.
+  </Card>
+  <Card title="Cancellation" icon="circle-stop">
+    Understand cooperative cancellation, propagation, and the limits of cancellation.
+  </Card>
+  <Card title="Networking and files" icon="network">
+    Explore the asynchronous I/O facilities exposed through Coasio.
+  </Card>
+</CardGrid>
+
+## Explore Coasio
+
+- **Getting started:** install the library and write your first asynchronous program.
+- **Core concepts:** learn tasks, scheduling, lifetimes, and task composition.
+- **Guides:** follow practical examples for common programming tasks.
+- **Reference:** look up public APIs, errors, cancellation, networking, and filesystem support.

@@ -1,0 +1,24 @@
+@charset "UTF-8";
+
+:root {
+  --sl-content-width: 52rem;
+  --sl-text-h1: 2.4rem;
+}
+
+/* Make inline C++ identifiers easier to distinguish. */
+.sl-markdown-content :not(pre) > code {
+  font-size: 0.9em;
+  overflow-wrap: anywhere;
+}
+
+/* Keep code samples readable without making them dominate the page. */
+.expressive-code {
+  margin-block: 1.25rem;
+}
+
+/* Give API-style tables a little breathing room. */
+.sl-markdown-content table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}

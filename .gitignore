@@ -1,4 +1,5 @@
 .vs/
+.vscode/
 .cache/
 .idea/
 cmake-build-*/
@@ -7,4 +8,3 @@ out/
 CMakeSettings.json
 compile_commands.json
 *.sh
-docs/
