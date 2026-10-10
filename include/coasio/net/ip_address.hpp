@@ -11,6 +11,9 @@ class ip_address {
 public:
   ip_address() = default;
 
+  explicit ip_address(asio::ip::address address) noexcept
+      : address_{std::move(address)} {}
+
   static ip_address v4() noexcept {
     return ip_address{asio::ip::address_v4::any()};
   }
@@ -71,9 +74,6 @@ public:
 
 private:
   asio::ip::address address_{};
-
-  explicit ip_address(asio::ip::address address) noexcept
-      : address_{std::move(address)} {}
 };
 }; // namespace coasio::net
 

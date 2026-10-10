@@ -1,5 +1,6 @@
 #include <coasio.hpp>
 
+#include "coasio/net/ip_address.hpp"
 #include "coasio/net/tcp.hpp"
 #include "coasio/time.hpp"
 
@@ -149,7 +150,7 @@ coasio::task<void> client_handler(coasio::net::tcp::socket sk) {
 
 COASIO_MAIN$() {
   auto maybeListener = coasio::net::tcp::listener::bind(
-      coasio::net::tcp::endpoint{coasio::net::tcp::ip_address::v4(), 8080});
+      coasio::net::tcp::endpoint{coasio::net::ip_address::v4(), 8080});
   if (!maybeListener) {
     std::cerr << "[Error] listener " << maybeListener.error().message()
               << std::endl;
