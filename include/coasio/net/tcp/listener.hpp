@@ -1,9 +1,13 @@
 #ifndef COASIO_NET_TCP_LISTENER_HPP
 #define COASIO_NET_TCP_LISTENER_HPP
+#include "coasio/runtime.hpp"
+
 #include <asio/ip/tcp.hpp>
 
-#include "endpoint.hpp"
-#include "socket.hpp"
+#include "coasio/detail/async_op.hpp"
+#include "coasio/detail/fwd.hpp"
+#include "coasio/net/tcp/endpoint.hpp"
+#include "coasio/net/tcp/socket.hpp"
 
 namespace coasio::net::tcp {
 class listener {
@@ -15,25 +19,25 @@ public:
   }
 
   static std::expected<listener, std::error_code>
-  bind(endpoint ep, bool reuse_address = true) {
-    auto lsnr = create();
+  bind(endpoint ep, const bool reuse_address = true) {
+    auto listener_ = create();
     asio::error_code ec;
 
-    lsnr.asio_handle().open(ep.asio_endpoint().protocol(), ec);
+    listener_.asio_handle().open(ep.asio_endpoint().protocol(), ec);
     if (ec)
       return std::unexpected{ec};
 
     if (reuse_address) {
-      lsnr.asio_handle().set_option(
+      listener_.asio_handle().set_option(
           asio::ip::tcp::acceptor::reuse_address(true), ec);
       if (ec)
         return std::unexpected{ec};
     }
 
-    lsnr.asio_handle().bind(ep.asio_endpoint(), ec);
+    listener_.asio_handle().bind(ep.asio_endpoint(), ec);
     if (ec)
       return std::unexpected{ec};
-    return lsnr;
+    return listener_;
   }
 
   auto accept() {

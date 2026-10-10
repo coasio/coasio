@@ -4,8 +4,9 @@
 #include <expected>
 
 #include <asio/ip/address.hpp>
+#include <utility>
 
-namespace coasio::net::tcp {
+namespace coasio::net {
 class ip_address {
 public:
   ip_address() = default;
@@ -27,7 +28,7 @@ public:
   }
 
   static std::expected<ip_address, std::error_code>
-  from_string(std::string_view ip_string) noexcept {
+  from_string(const std::string_view ip_string) noexcept {
     asio::error_code ec;
     const auto addr = asio::ip::make_address(ip_string, ec);
     if (ec) {
@@ -64,14 +65,16 @@ public:
 
   [[nodiscard]] auto &asio_address() noexcept { return address_; }
 
+  [[nodiscard]] const auto &asio_address() const noexcept { return address_; }
+
   std::ostream &operator<<(std::ostream &os) const { return os << address_; }
 
 private:
   asio::ip::address address_{};
 
-  explicit ip_address(const asio::ip::address &address) noexcept
-      : address_{address} {}
+  explicit ip_address(asio::ip::address address) noexcept
+      : address_{std::move(address)} {}
 };
-}; // namespace coasio::net::tcp
+}; // namespace coasio::net
 
 #endif // !COASIO_NET_IP_ADDRESS_HPP
