@@ -9,6 +9,7 @@
 #include "coasio/cancel_scope.hpp"
 #include "coasio/detail/root_node.hpp"
 #include "coasio/detail/root_outcome.hpp"
+#include "coasio/detail/uncancellable.hpp"
 #include "coasio/sync/oneshot.hpp"
 
 namespace coasio {
@@ -71,6 +72,11 @@ public:
       auto &cp = child.handle().promise();
       cp.owning_scope_ = owning_scope_;
       return std::move(child);
+    }
+
+    template <typename Awaitable>
+    auto await_transform(detail::uncancellable_awaitable<Awaitable> &&wrapped) {
+      return std::move(wrapped.awaitable);
     }
 
     template <typename Awaitable>
@@ -214,6 +220,11 @@ public:
       auto &cp = child.handle().promise();
       cp.owning_scope_ = owning_scope_;
       return std::move(child);
+    }
+
+    template <typename Awaitable>
+    auto await_transform(detail::uncancellable_awaitable<Awaitable> &&wrapped) {
+      return std::move(wrapped.awaitable);
     }
 
     template <typename Awaitable>

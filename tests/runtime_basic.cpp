@@ -87,8 +87,7 @@ TEST_CASE("abort causes long sleep to return early", "[runtime]") {
 
 // Cancellation propagation
 
-TEST_CASE("aborting a task interrupts its pending join() but leaves the "
-          "spawned child running",
+TEST_CASE("aborting a task does not interrupt its pending join()",
           "[runtime][cancel]") {
   coasio::runtime rt{};
   std::atomic<bool> child_finished{false};
@@ -97,29 +96,26 @@ TEST_CASE("aborting a task interrupts its pending join() but leaves the "
       rt.spawn([](std::atomic<bool> *child_finished_ptr) -> coasio::task<void> {
         auto child =
             coasio::spawn([](std::atomic<bool> *ptr) -> coasio::task<void> {
-              co_await coasio::time::sleep(std::chrono::seconds(2));
-              ptr->store(true, std::memory_order_relaxed);
+              co_await coasio::time::sleep(std::chrono::milliseconds(50));
+              ptr->store(true, std::memory_order_release);
               co_return;
             }(child_finished_ptr));
 
         auto r = co_await child.join();
-        REQUIRE_FALSE(r.has_value());
-        REQUIRE(r.error() == coasio::error::cancelled);
+
+        REQUIRE(r.has_value());
+        REQUIRE(child_finished_ptr->load(std::memory_order_acquire));
         co_return;
       }(&child_finished));
 
   std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
   h.abort();
-  rt.block_on(h.join());
 
-  // Wait for the child to finish its 50ms sleep.
-  // If it didn't, CTest's timeout will catch it
-  while (!child_finished.load(std::memory_order_acquire)) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
-  }
+  auto r = rt.block_on(h.join());
 
-  REQUIRE(child_finished.load());
+  REQUIRE(r.has_value());
+  REQUIRE(child_finished.load(std::memory_order_acquire));
 }
 
 // Timer / sleep
