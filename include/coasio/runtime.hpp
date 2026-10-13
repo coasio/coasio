@@ -19,6 +19,7 @@
 #include "detail/blocking/spawn_blocking.hpp"
 #include "detail/fwd.hpp"
 #include "detail/root_node.hpp"
+#include "detail/uncancellable.hpp"
 #include "sync/oneshot.hpp"
 #include "task.hpp"
 
@@ -459,7 +460,7 @@ public:
   }
 
   task<std::expected<T, std::error_code>> join() {
-    auto r = co_await std::move(rx_);
+    auto r = co_await detail::uncancellable(std::move(rx_));
     if (!r)
       co_return std::unexpected(r.error());
     if (r->exception)
