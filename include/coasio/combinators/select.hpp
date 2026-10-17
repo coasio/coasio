@@ -1,0 +1,204 @@
+#ifndef COASIO_COMBINATORS_SELECT_HPP
+#define COASIO_COMBINATORS_SELECT_HPP
+
+#include <array>
+#include <cstdint>
+#include <exception>
+#include <expected>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <tuple>
+#include <type_traits>
+#include <utility>
+#include <variant>
+
+#include "coasio.hpp"
+#include "coasio/sync/oneshot.hpp"
+
+namespace coasio::combinators {
+
+template <std::size_t Index, typename T> struct branch_result {
+  static constexpr std::size_t index = Index;
+  T value;
+};
+
+template <std::size_t Index> struct branch_result<Index, void> {
+  static constexpr std::size_t index = Index;
+};
+
+namespace detail {
+
+template <typename Seq, typename... Ts> struct select_variant_helper;
+
+template <std::size_t... Is, typename... Ts>
+struct select_variant_helper<std::index_sequence<Is...>, Ts...> {
+  using type = std::variant<branch_result<Is, Ts>...>;
+};
+
+template <typename... Ts>
+using select_variant_t =
+    select_variant_helper<std::index_sequence_for<Ts...>, Ts...>::type;
+
+enum class select_status : std::uint8_t {
+  pending,
+  won_value,
+  won_exception,
+  aborted
+};
+
+template <typename... Ts> struct select_state {
+  using variant_t = select_variant_t<Ts...>;
+  static constexpr std::size_t N = sizeof...(Ts);
+
+  std::mutex mtx;
+  select_status status = select_status::pending;
+  std::size_t winner_index = 0;
+  std::optional<variant_t> result;
+  std::exception_ptr exception = nullptr;
+  sync::oneshot::sender<void> tx;
+
+  explicit select_state(sync::oneshot::sender<void> sender) noexcept
+      : tx(std::move(sender)) {}
+
+  template <std::size_t I, typename... Args> void set_winner(Args &&...args) {
+    {
+      std::lock_guard lk(mtx);
+      if (status != select_status::pending)
+        return;
+
+      if constexpr (sizeof...(Args) > 0) {
+        static_assert(sizeof...(Args) == 1,
+                      "set_winner accepts exactly one value");
+        using value_t =
+            std::remove_cvref_t<std::tuple_element_t<0, std::tuple<Args...>>>;
+        result.emplace(std::in_place_type<branch_result<I, value_t>>,
+                       branch_result<I, value_t>{std::forward<Args>(args)...});
+      } else {
+        result.emplace(std::in_place_type<branch_result<I, void>>,
+                       branch_result<I, void>{});
+      }
+
+      winner_index = I;
+      status = select_status::won_value;
+    }
+    auto _ = tx.send();
+  }
+
+  void set_exception(const std::size_t idx, const std::exception_ptr &ep) {
+    {
+      std::lock_guard lk(mtx);
+      if (status != select_status::pending)
+        return;
+      winner_index = idx;
+      exception = ep;
+      status = select_status::won_exception;
+    }
+    auto _ = tx.send();
+  }
+
+  bool try_mark_aborted() noexcept {
+    std::lock_guard lk(mtx);
+    if (status != select_status::pending)
+      return false;
+    status = select_status::aborted;
+    return true;
+  }
+};
+
+template <std::size_t I, typename T, typename State>
+task<void> select_worker(task<T> t, std::shared_ptr<State> state) {
+  try {
+    if constexpr (std::is_void_v<T>) {
+      co_await std::move(t);
+      state->template set_winner<I>();
+    } else {
+      T val = co_await std::move(t);
+      state->template set_winner<I>(std::move(val));
+    }
+  } catch (...) {
+    state->set_exception(I, std::current_exception());
+  }
+  co_return;
+}
+
+template <std::size_t N> struct handles_abort_guard {
+  std::array<JoinHandle<void>, N> &handles;
+  bool active = true;
+
+  ~handles_abort_guard() {
+    if (active) {
+      for (auto &h : handles) {
+        h.abort();
+      }
+    }
+  }
+  void disarm() noexcept { active = false; }
+};
+
+template <typename... Ts, std::size_t... Is>
+auto select_impl(std::index_sequence<Is...>, task<Ts>... tasks)
+    -> task<std::expected<select_variant_t<Ts...>, std::error_code>> {
+  constexpr std::size_t N = sizeof...(Ts);
+  using state_t = select_state<Ts...>;
+
+  auto [tx, rx] = sync::make_oneshot<void>();
+  auto state = std::make_shared<state_t>(std::move(tx));
+
+  std::array<JoinHandle<void>, N> handles;
+  handles_abort_guard<N> abort_guard{handles};
+
+  ((handles[Is] = coasio::spawn(select_worker<Is>(std::move(tasks), state))),
+   ...);
+
+  auto wait_res = co_await std::move(rx);
+  if (!wait_res.has_value()) {
+    state->try_mark_aborted();
+  }
+
+  select_status status_snapshot;
+  std::size_t winner_idx = 0;
+  {
+    std::lock_guard lk(state->mtx);
+    status_snapshot = state->status;
+    winner_idx = state->winner_index;
+  }
+
+  for (std::size_t j = 0; j < N; ++j) {
+    if (status_snapshot == select_status::aborted || j != winner_idx) {
+      handles[j].abort();
+    }
+  }
+
+  for (auto &h : handles) {
+    co_await h.join();
+  }
+  abort_guard.disarm();
+
+  std::unique_lock lk(state->mtx);
+  if (state->status == select_status::won_exception) {
+    auto ep = state->exception;
+    lk.unlock();
+    std::rethrow_exception(ep);
+  }
+  if (state->status == select_status::aborted || !state->result.has_value()) {
+    lk.unlock();
+    co_return std::unexpected(coasio::error::cancelled);
+  }
+
+  auto out = std::move(*state->result);
+  lk.unlock();
+  co_return std::move(out);
+}
+
+} // namespace detail
+
+template <typename... Ts> auto select(task<Ts>... tasks) {
+  static_assert(sizeof...(Ts) > 0, "select requires at least one task");
+  return detail::select_impl(std::index_sequence_for<Ts...>{},
+                             std::move(tasks)...);
+}
+
+} // namespace coasio::combinators
+
+#endif // !COASIO_COMBINATORS_SELECT_HPP
