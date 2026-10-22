@@ -14,6 +14,7 @@
 #include <variant>
 
 #include "coasio.hpp"
+#include "coasio/detail/combinator_common.hpp"
 #include "coasio/sync/oneshot.hpp"
 
 namespace coasio::combinators {
@@ -106,14 +107,15 @@ template <typename... Ts> struct select_state {
   }
 };
 
-template <std::size_t I, typename T, typename State>
-task<void> select_worker(task<T> t, std::shared_ptr<State> state) {
+template <std::size_t I, coasio_awaitable Aw, typename State>
+task<void> select_worker(Aw aw, std::shared_ptr<State> state) {
+  using T = await_result_t<Aw>;
   try {
     if constexpr (std::is_void_v<T>) {
-      co_await std::move(t);
+      co_await std::move(aw);
       state->template set_winner<I>();
     } else {
-      T val = co_await std::move(t);
+      T val = co_await std::move(aw);
       state->template set_winner<I>(std::move(val));
     }
   } catch (...) {
@@ -122,31 +124,17 @@ task<void> select_worker(task<T> t, std::shared_ptr<State> state) {
   co_return;
 }
 
-template <std::size_t N> struct handles_abort_guard {
-  std::array<JoinHandle<void>, N> &handles;
-  bool active = true;
-
-  ~handles_abort_guard() {
-    if (active) {
-      for (auto &h : handles) {
-        h.abort();
-      }
-    }
-  }
-  void disarm() noexcept { active = false; }
-};
-
-template <typename... Ts, std::size_t... Is>
-auto select_impl(std::index_sequence<Is...>, task<Ts>... tasks)
-    -> task<std::expected<select_variant_t<Ts...>, std::error_code>> {
-  constexpr std::size_t N = sizeof...(Ts);
-  using state_t = select_state<Ts...>;
+template <coasio_awaitable... Aws, std::size_t... Is>
+auto select_impl(std::index_sequence<Is...>, Aws... tasks) -> task<
+    std::expected<select_variant_t<await_result_t<Aws>...>, std::error_code>> {
+  constexpr std::size_t N = sizeof...(Aws);
+  using state_t = select_state<await_result_t<Aws>...>;
 
   auto [tx, rx] = sync::make_oneshot<void>();
   auto state = std::make_shared<state_t>(std::move(tx));
 
   std::array<JoinHandle<void>, N> handles;
-  handles_abort_guard<N> abort_guard{handles};
+  coasio::detail::handles_abort_guard<N> abort_guard{handles};
 
   ((handles[Is] = coasio::spawn(select_worker<Is>(std::move(tasks), state))),
    ...);
@@ -193,10 +181,10 @@ auto select_impl(std::index_sequence<Is...>, task<Ts>... tasks)
 
 } // namespace detail
 
-template <typename... Ts> auto select(task<Ts>... tasks) {
-  static_assert(sizeof...(Ts) > 0, "select requires at least one task");
-  return detail::select_impl(std::index_sequence_for<Ts...>{},
-                             std::move(tasks)...);
+template <coasio_awaitable... Aws> auto select(Aws &&...aws) {
+  static_assert(sizeof...(Aws) > 0, "select requires at least one awaitable");
+  return detail::select_impl(std::index_sequence_for<Aws...>{},
+                             std::forward<Aws>(aws)...);
 }
 
 } // namespace coasio::combinators
