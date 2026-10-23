@@ -58,28 +58,28 @@ TEST_CASE("select_parent_cancelled_drains_all_branches",
   std::atomic<bool> cleaned_up_a{false};
   std::atomic<bool> cleaned_up_b{false};
 
-  auto h = rt.spawn([](std::atomic<bool> *ca,
-                       std::atomic<bool> *cb) -> coasio::task<void> {
-    auto long_sleep_a = [](std::atomic<bool> *flag) -> coasio::task<int> {
-      auto r = co_await coasio::time::sleep(5s);
-      if (!r.has_value())
-        flag->store(true, std::memory_order_release);
-      co_return 1;
-    };
+  auto h = rt.spawn(
+      [](std::atomic<bool> *ca, std::atomic<bool> *cb) -> coasio::task<void> {
+        auto long_sleep_a = [](std::atomic<bool> *flag) -> coasio::task<int> {
+          auto r = co_await coasio::time::sleep(5s);
+          if (!r.has_value())
+            flag->store(true, std::memory_order_release);
+          co_return 1;
+        };
 
-    auto long_sleep_b = [](std::atomic<bool> *flag) -> coasio::task<int> {
-      auto r = co_await coasio::time::sleep(5s);
-      if (!r.has_value())
-        flag->store(true, std::memory_order_release);
-      co_return 2;
-    };
+        auto long_sleep_b = [](std::atomic<bool> *flag) -> coasio::task<int> {
+          auto r = co_await coasio::time::sleep(5s);
+          if (!r.has_value())
+            flag->store(true, std::memory_order_release);
+          co_return 2;
+        };
 
-    auto res = co_await select(long_sleep_a(ca), long_sleep_b(cb));
+        auto res = co_await select(long_sleep_a(ca), long_sleep_b(cb));
 
-    REQUIRE_FALSE(res.has_value());
-    REQUIRE(res.error() == coasio::error::cancelled);
-    co_return;
-  }(&cleaned_up_a, &cleaned_up_b));
+        REQUIRE_FALSE(res.has_value());
+        REQUIRE(res.error() == coasio::error::cancelled);
+        co_return;
+      }(&cleaned_up_a, &cleaned_up_b));
 
   std::this_thread::sleep_for(20ms);
   h.abort();
@@ -96,30 +96,30 @@ TEST_CASE("select_pre_cancelled_parent", "[combinators][select]") {
   std::atomic<bool> cleaned_up_a{false};
   std::atomic<bool> cleaned_up_b{false};
 
-  auto h = rt.spawn([](std::atomic<bool> *ca,
-                       std::atomic<bool> *cb) -> coasio::task<void> {
-    co_await coasio::time::sleep(50ms);
+  auto h = rt.spawn(
+      [](std::atomic<bool> *ca, std::atomic<bool> *cb) -> coasio::task<void> {
+        co_await coasio::time::sleep(50ms);
 
-    auto branch_a = [](std::atomic<bool> *flag) -> coasio::task<int> {
-      auto r = co_await coasio::time::sleep(5s);
-      if (!r.has_value())
-        flag->store(true, std::memory_order_release);
-      co_return 1;
-    };
+        auto branch_a = [](std::atomic<bool> *flag) -> coasio::task<int> {
+          auto r = co_await coasio::time::sleep(5s);
+          if (!r.has_value())
+            flag->store(true, std::memory_order_release);
+          co_return 1;
+        };
 
-    auto branch_b = [](std::atomic<bool> *flag) -> coasio::task<int> {
-      auto r = co_await coasio::time::sleep(5s);
-      if (!r.has_value())
-        flag->store(true, std::memory_order_release);
-      co_return 2;
-    };
+        auto branch_b = [](std::atomic<bool> *flag) -> coasio::task<int> {
+          auto r = co_await coasio::time::sleep(5s);
+          if (!r.has_value())
+            flag->store(true, std::memory_order_release);
+          co_return 2;
+        };
 
-    auto res = co_await select(branch_a(ca), branch_b(cb));
+        auto res = co_await select(branch_a(ca), branch_b(cb));
 
-    REQUIRE_FALSE(res.has_value());
-    REQUIRE(res.error() == coasio::error::cancelled);
-    co_return;
-  }(&cleaned_up_a, &cleaned_up_b));
+        REQUIRE_FALSE(res.has_value());
+        REQUIRE(res.error() == coasio::error::cancelled);
+        co_return;
+      }(&cleaned_up_a, &cleaned_up_b));
 
   h.abort();
   auto join_res = rt.block_on(h.join());
@@ -215,17 +215,12 @@ TEST_CASE("timeout_distinguishes_deadline_from_parent_cancel",
         co_return 123;
       };
 
-      auto deadline = []() -> coasio::task<void> {
-        co_await coasio::time::sleep(20ms);
-        co_return;
-      };
-
-      auto res = co_await select(user_task(cancelled), deadline());
+      auto res = co_await select(user_task(cancelled), coasio::time::sleep(20ms));
 
       REQUIRE(res.has_value());
       // Branch 1 (deadline) won
       REQUIRE(res->index() == 1);
-      REQUIRE(std::holds_alternative<branch_result<1, void>>(*res));
+      REQUIRE(std::holds_alternative<branch_result<1, std::expected<void, std::error_code>>>(*res));
       co_return;
     }(&user_task_cancelled));
 
@@ -237,28 +232,28 @@ TEST_CASE("timeout_distinguishes_deadline_from_parent_cancel",
     std::atomic<bool> user_task_cancelled{false};
     std::atomic<bool> deadline_cancelled{false};
 
-    auto h = rt.spawn([](std::atomic<bool> *uc,
-                         std::atomic<bool> *dc) -> coasio::task<void> {
-      auto user_task = [](std::atomic<bool> *flag) -> coasio::task<int> {
-        auto r = co_await coasio::time::sleep(5s);
-        if (!r.has_value())
-          flag->store(true, std::memory_order_release);
-        co_return 123;
-      };
+    auto h = rt.spawn(
+        [](std::atomic<bool> *uc, std::atomic<bool> *dc) -> coasio::task<void> {
+          auto user_task = [](std::atomic<bool> *flag) -> coasio::task<int> {
+            auto r = co_await coasio::time::sleep(5s);
+            if (!r.has_value())
+              flag->store(true, std::memory_order_release);
+            co_return 123;
+          };
 
-      auto deadline = [](std::atomic<bool> *flag) -> coasio::task<void> {
-        auto r = co_await coasio::time::sleep(5s);
-        if (!r.has_value())
-          flag->store(true, std::memory_order_release);
-        co_return;
-      };
+          auto deadline = [](std::atomic<bool> *flag) -> coasio::task<void> {
+            auto r = co_await coasio::time::sleep(5s);
+            if (!r.has_value())
+              flag->store(true, std::memory_order_release);
+            co_return;
+          };
 
-      auto res = co_await select(user_task(uc), deadline(dc));
+          auto res = co_await select(user_task(uc), deadline(dc));
 
-      REQUIRE_FALSE(res.has_value());
-      REQUIRE(res.error() == coasio::error::cancelled);
-      co_return;
-    }(&user_task_cancelled, &deadline_cancelled));
+          REQUIRE_FALSE(res.has_value());
+          REQUIRE(res.error() == coasio::error::cancelled);
+          co_return;
+        }(&user_task_cancelled, &deadline_cancelled));
 
     std::this_thread::sleep_for(10ms);
     h.abort();
@@ -281,29 +276,27 @@ TEST_CASE("select_waits_for_non_cooperative_loser", "[combinators][select]") {
   auto gate_tx_ptr =
       std::make_shared<coasio::sync::oneshot::sender<int>>(std::move(gate_tx));
 
-  auto h = rt.spawn(
-      [](coasio::sync::oneshot::receiver<int> rx,
-         std::atomic<bool> *returned,
-         std::atomic<bool> *b_finished) -> coasio::task<void> {
-        auto fast_a = []() -> coasio::task<int> {
-          co_await coasio::time::sleep(0ms);
-          co_return 1;
-        };
+  auto h = rt.spawn([](coasio::sync::oneshot::receiver<int> rx,
+                       std::atomic<bool> *returned,
+                       std::atomic<bool> *b_finished) -> coasio::task<void> {
+    auto fast_a = []() -> coasio::task<int> {
+      co_await coasio::time::sleep(0ms);
+      co_return 1;
+    };
 
-        auto blocking_b =
-            [](coasio::sync::oneshot::receiver<int> gate,
-               std::atomic<bool> *finished) -> coasio::task<int> {
-          auto val = co_await coasio::detail::uncancellable(std::move(gate));
-          finished->store(true, std::memory_order_release);
-          if (val.has_value())
-            co_return *val;
-          co_return -1;
-        };
+    auto blocking_b = [](coasio::sync::oneshot::receiver<int> gate,
+                         std::atomic<bool> *finished) -> coasio::task<int> {
+      auto val = co_await coasio::detail::uncancellable(std::move(gate));
+      finished->store(true, std::memory_order_release);
+      if (val.has_value())
+        co_return *val;
+      co_return -1;
+    };
 
-        co_await select(fast_a(), blocking_b(std::move(rx), b_finished));
-        returned->store(true, std::memory_order_release);
-        co_return;
-      }(std::move(gate_rx), &select_returned, &branch_b_finished));
+    co_await select(fast_a(), blocking_b(std::move(rx), b_finished));
+    returned->store(true, std::memory_order_release);
+    co_return;
+  }(std::move(gate_rx), &select_returned, &branch_b_finished));
 
   std::this_thread::sleep_for(50ms);
   REQUIRE_FALSE(select_returned.load(std::memory_order_acquire));

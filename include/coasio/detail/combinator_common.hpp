@@ -54,12 +54,12 @@ concept awaitable = requires(Aw &&aw, std::coroutine_handle<> h) {
 
 template <awaitable Aw>
 using await_result_t =
-    decltype(get_awaiter(std::declval<std::remove_cvref_t<Aw>>())
+    decltype(get_awaiter(std::declval<Aw>())
                  .await_resume());
 
 template <typename Aw>
 concept coasio_awaitable =
-    awaitable<Aw> && (requires(Aw &aw, cancel_scope scope) {
+    awaitable<Aw> && (requires(Aw &aw, std::shared_ptr<cancel_scope> scope) {
       aw.set_cancel_scope(scope);
     } || is_task_v<Aw>);
 

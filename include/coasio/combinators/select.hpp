@@ -71,8 +71,7 @@ template <typename... Ts> struct select_state {
       if constexpr (sizeof...(Args) > 0) {
         static_assert(sizeof...(Args) == 1,
                       "set_winner accepts exactly one value");
-        using value_t =
-            std::remove_cvref_t<std::tuple_element_t<0, std::tuple<Args...>>>;
+        using value_t = std::tuple_element_t<0, std::tuple<Args...>>;
         result.emplace(std::in_place_type<branch_result<I, value_t>>,
                        branch_result<I, value_t>{std::forward<Args>(args)...});
       } else {
@@ -108,14 +107,14 @@ template <typename... Ts> struct select_state {
 };
 
 template <std::size_t I, coasio_awaitable Aw, typename State>
-task<void> select_worker(Aw aw, std::shared_ptr<State> state) {
+task<void> select_worker(Aw &&aw, std::shared_ptr<State> state) {
   using T = await_result_t<Aw>;
   try {
     if constexpr (std::is_void_v<T>) {
-      co_await std::move(aw);
+      co_await std::forward<Aw>(aw);
       state->template set_winner<I>();
     } else {
-      T val = co_await std::move(aw);
+      T val = co_await std::forward<Aw>(aw);
       state->template set_winner<I>(std::move(val));
     }
   } catch (...) {
@@ -125,7 +124,7 @@ task<void> select_worker(Aw aw, std::shared_ptr<State> state) {
 }
 
 template <coasio_awaitable... Aws, std::size_t... Is>
-auto select_impl(std::index_sequence<Is...>, Aws... tasks) -> task<
+auto select_impl(std::index_sequence<Is...>, Aws &&...aws) -> task<
     std::expected<select_variant_t<await_result_t<Aws>...>, std::error_code>> {
   constexpr std::size_t N = sizeof...(Aws);
   using state_t = select_state<await_result_t<Aws>...>;
@@ -136,7 +135,8 @@ auto select_impl(std::index_sequence<Is...>, Aws... tasks) -> task<
   std::array<JoinHandle<void>, N> handles;
   coasio::detail::handles_abort_guard<N> abort_guard{handles};
 
-  ((handles[Is] = coasio::spawn(select_worker<Is>(std::move(tasks), state))),
+  ((handles[Is] =
+        coasio::spawn(select_worker<Is>(std::forward<Aws>(aws), state))),
    ...);
 
   auto wait_res = co_await std::move(rx);
@@ -159,7 +159,7 @@ auto select_impl(std::index_sequence<Is...>, Aws... tasks) -> task<
   }
 
   for (auto &h : handles) {
-    co_await h.join();
+    auto _ = co_await h.join();
   }
   abort_guard.disarm();
 
@@ -181,6 +181,11 @@ auto select_impl(std::index_sequence<Is...>, Aws... tasks) -> task<
 
 } // namespace detail
 
+/// @brief Selects the first awaitable to complete.
+/// @note The returned task should be awaited immediately. Do not store it for
+/// later use,
+///       as the supplied awaitables must remain alive until the operation
+///       completes.
 template <coasio_awaitable... Aws> auto select(Aws &&...aws) {
   static_assert(sizeof...(Aws) > 0, "select requires at least one awaitable");
   return detail::select_impl(std::index_sequence_for<Aws...>{},
