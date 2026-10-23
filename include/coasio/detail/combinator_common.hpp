@@ -53,9 +53,7 @@ concept awaitable = requires(Aw &&aw, std::coroutine_handle<> h) {
 };
 
 template <awaitable Aw>
-using await_result_t =
-    decltype(get_awaiter(std::declval<Aw>())
-                 .await_resume());
+using await_result_t = decltype(get_awaiter(std::declval<Aw>()).await_resume());
 
 template <typename Aw>
 concept coasio_awaitable =

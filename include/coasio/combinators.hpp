@@ -3,7 +3,9 @@
 
 #include <type_traits>
 
+#include "combinators/race.hpp"
 #include "combinators/select.hpp"
+#include "combinators/timeout.hpp"
 
 namespace coasio::combinators {
 

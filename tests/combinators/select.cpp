@@ -215,12 +215,14 @@ TEST_CASE("timeout_distinguishes_deadline_from_parent_cancel",
         co_return 123;
       };
 
-      auto res = co_await select(user_task(cancelled), coasio::time::sleep(20ms));
+      auto res =
+          co_await select(user_task(cancelled), coasio::time::sleep(20ms));
 
       REQUIRE(res.has_value());
       // Branch 1 (deadline) won
       REQUIRE(res->index() == 1);
-      REQUIRE(std::holds_alternative<branch_result<1, std::expected<void, std::error_code>>>(*res));
+      REQUIRE(std::holds_alternative<
+              branch_result<1, std::expected<void, std::error_code>>>(*res));
       co_return;
     }(&user_task_cancelled));
 
