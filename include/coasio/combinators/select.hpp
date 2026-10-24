@@ -30,16 +30,16 @@ template <std::size_t Index> struct branch_result<Index, void> {
 
 namespace detail {
 
-template <typename Seq, typename... Ts> struct select_variant_helper;
+template <typename Seq, typename... Aws> struct select_variant_helper;
 
-template <std::size_t... Is, typename... Ts>
-struct select_variant_helper<std::index_sequence<Is...>, Ts...> {
-  using type = std::variant<branch_result<Is, Ts>...>;
+template <std::size_t... Is, typename... Aws>
+struct select_variant_helper<std::index_sequence<Is...>, Aws...> {
+  using type = std::variant<branch_result<Is, Aws>...>;
 };
 
-template <typename... Ts>
+template <typename... Aws>
 using select_variant_t =
-    select_variant_helper<std::index_sequence_for<Ts...>, Ts...>::type;
+    select_variant_helper<std::index_sequence_for<Aws...>, Aws...>::type;
 
 enum class select_status : std::uint8_t {
   pending,
@@ -48,9 +48,10 @@ enum class select_status : std::uint8_t {
   aborted
 };
 
-template <typename... Ts> struct select_state {
-  using variant_t = select_variant_t<Ts...>;
-  static constexpr std::size_t N = sizeof...(Ts);
+template <typename... Aws> struct select_state {
+  using variant_t = select_variant_t<Aws...>;
+  using return_value_t = std::tuple<Aws...>;
+  static constexpr std::size_t N = sizeof...(Aws);
 
   std::mutex mtx;
   select_status status = select_status::pending;
@@ -63,20 +64,21 @@ template <typename... Ts> struct select_state {
       : tx(std::move(sender)) {}
 
   template <std::size_t I, typename... Args> void set_winner(Args &&...args) {
+    using value_t = std::tuple_element_t<I, return_value_t>;
+
     {
       std::lock_guard lk(mtx);
       if (status != select_status::pending)
         return;
 
-      if constexpr (sizeof...(Args) > 0) {
+      if constexpr (std::is_void_v<value_t>) {
+        result.emplace(std::in_place_type<branch_result<I, void>>, branch_result<I, void>{});
+      }
+      else {
         static_assert(sizeof...(Args) == 1,
                       "set_winner accepts exactly one value");
-        using value_t = std::tuple_element_t<0, std::tuple<Args...>>;
         result.emplace(std::in_place_type<branch_result<I, value_t>>,
                        branch_result<I, value_t>{std::forward<Args>(args)...});
-      } else {
-        result.emplace(std::in_place_type<branch_result<I, void>>,
-                       branch_result<I, void>{});
       }
 
       winner_index = I;
