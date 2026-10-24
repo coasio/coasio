@@ -8,12 +8,20 @@
 #include <utility>
 #include <variant>
 
-#include "coasio.hpp"
 #include "coasio/combinators/select.hpp"
 #include "coasio/detail/combinator_common.hpp"
 
 namespace coasio::combinators {
 
+/// @brief Races multiple awaitables concurrently, returning the value of the
+/// first to complete successfully.
+/// @details If the first completed awaitable fails, or if an operation-wide
+/// error occurs,
+///          the failure is propagated as a std::error_code.
+/// @note The returned task should be awaited immediately. Do not store it for
+/// later use,
+///       as the supplied awaitables must remain alive until the operation
+///       completes.
 template <coasio_awaitable... Aws>
 auto race(Aws &&...aws) -> task<std::expected<
     coasio::detail::race_value_t<coasio::detail::await_result_t<Aws>...>,

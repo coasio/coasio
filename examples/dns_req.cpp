@@ -70,17 +70,9 @@ coasio::task<void> req() {
 int main() {
   coasio::runtime rt{};
   rt.block_on([] -> coasio::task<void> {
-    auto r =
-        co_await coasio::combinators::select(req(), coasio::time::sleep(2s));
+    auto r = co_await coasio::timeout(req(), 2s);
     if (!r)
-      co_return;
-    std::visit(
-        []<typename T>(T &&args) {
-          if constexpr (coasio::combinators::is_branch_index<T, 1>) {
-            std::cout << "timeout" << std::endl;
-          }
-        },
-        *r);
+      std::cout << "timeout" << std::endl;
     co_return;
   });
   return 0;

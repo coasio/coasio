@@ -182,6 +182,7 @@ auto select_impl(std::index_sequence<Is...>, Aws &&...aws) -> task<
 } // namespace detail
 
 /// @brief Selects the first awaitable to complete.
+/// First branch to complete (value, or exception)
 /// @note The returned task should be awaited immediately. Do not store it for
 /// later use,
 ///       as the supplied awaitables must remain alive until the operation

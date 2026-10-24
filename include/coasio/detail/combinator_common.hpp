@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <expected>
 #include <system_error>
+#include <tuple>
 #include <type_traits>
 #include <utility>
 #include <variant>
@@ -92,6 +93,8 @@ template <typename... Ts> struct race_value {
 };
 
 template <typename... Ts> using race_value_t = race_value<Ts...>::type;
+
+template <typename... Ts> using join_tuple_t = std::tuple<norm_void_t<Ts>...>;
 
 // RAII guards
 
