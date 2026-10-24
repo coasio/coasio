@@ -1,7 +1,11 @@
+#include <chrono>
 #include <iomanip>
 #include <iostream>
 
+using namespace std::chrono_literals;
+
 #include "coasio.hpp"
+#include "coasio/combinators.hpp"
 #include "coasio/net/udp.hpp"
 #include "coasio/time.hpp"
 
@@ -66,11 +70,9 @@ coasio::task<void> req() {
 int main() {
   coasio::runtime rt{};
   rt.block_on([] -> coasio::task<void> {
-    auto t = coasio::spawn(req);
-    // TODO change to a coasio::timeout when available
-    auto _ = co_await coasio::time::sleep(std::chrono::seconds(3));
-    t.abort();
-    t.join();
+    auto r = co_await coasio::timeout(req(), 2s);
+    if (!r)
+      std::cout << "timeout" << std::endl;
     co_return;
   });
   return 0;
