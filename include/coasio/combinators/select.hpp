@@ -72,9 +72,9 @@ template <typename... Aws> struct select_state {
         return;
 
       if constexpr (std::is_void_v<value_t>) {
-        result.emplace(std::in_place_type<branch_result<I, void>>, branch_result<I, void>{});
-      }
-      else {
+        result.emplace(std::in_place_type<branch_result<I, void>>,
+                       branch_result<I, void>{});
+      } else {
         static_assert(sizeof...(Args) == 1,
                       "set_winner accepts exactly one value");
         result.emplace(std::in_place_type<branch_result<I, value_t>>,
@@ -125,9 +125,13 @@ task<void> select_worker(Aw &&aw, std::shared_ptr<State> state) {
   co_return;
 }
 
-template <coasio_awaitable... Aws, std::size_t... Is>
-auto select_impl(std::index_sequence<Is...>, Aws &&...aws) -> task<
-    std::expected<select_variant_t<await_result_t<Aws>...>, std::error_code>> {
+// NOTE: The return type is passed as `Ret` instead of being written as a
+// trailing `-> task<...decltype...>` because GCC 12 emits
+//   "sorry, unimplemented: mangling decltype_type"
+// when mangling a coroutine template whose return type transitively
+// contains `decltype(...)` over a template parameter.
+template <typename Ret, coasio_awaitable... Aws, std::size_t... Is>
+auto select_impl(std::index_sequence<Is...>, Aws &&...aws) -> task<Ret> {
   constexpr std::size_t N = sizeof...(Aws);
   using state_t = select_state<await_result_t<Aws>...>;
 
@@ -191,8 +195,10 @@ auto select_impl(std::index_sequence<Is...>, Aws &&...aws) -> task<
 ///       completes.
 template <coasio_awaitable... Aws> auto select(Aws &&...aws) {
   static_assert(sizeof...(Aws) > 0, "select requires at least one awaitable");
-  return detail::select_impl(std::index_sequence_for<Aws...>{},
-                             std::forward<Aws>(aws)...);
+  using ret_t = std::expected<detail::select_variant_t<await_result_t<Aws>...>,
+                              std::error_code>;
+  return detail::select_impl<ret_t>(std::index_sequence_for<Aws...>{},
+                                    std::forward<Aws>(aws)...);
 }
 
 } // namespace coasio::combinators

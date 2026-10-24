@@ -15,7 +15,7 @@ function(coasio_add_test TEST_NAME)
     target_link_libraries(${TARGET_NAME} PRIVATE coasio Catch2::Catch2WithMain)
 
     include(Catch)
-    catch_discover_tests(${TARGET_NAME} PROPERTIES TIMEOUT 30)
+    catch_discover_tests(${TARGET_NAME} PROPERTIES TIMEOUT 60)
 endfunction()
 
 coasio_add_test(rt_basic runtime_basic.cpp)

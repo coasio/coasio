@@ -13,20 +13,10 @@
 
 namespace coasio::combinators {
 
-/// @brief Races multiple awaitables concurrently, returning the value of the
-/// first to complete successfully.
-/// @details If the first completed awaitable fails, or if an operation-wide
-/// error occurs,
-///          the failure is propagated as a std::error_code.
-/// @note The returned task should be awaited immediately. Do not store it for
-/// later use,
-///       as the supplied awaitables must remain alive until the operation
-///       completes.
-template <coasio_awaitable... Aws>
-auto race(Aws &&...aws) -> task<std::expected<
-    coasio::detail::race_value_t<coasio::detail::await_result_t<Aws>...>,
-    std::error_code>> {
-  static_assert(sizeof...(Aws) > 0, "race requires at least one awaitable");
+namespace detail {
+
+template <typename Ret, coasio_awaitable... Aws>
+auto race_impl(Aws &&...aws) -> task<Ret> {
   using value_t =
       coasio::detail::race_value_t<coasio::detail::await_result_t<Aws>...>;
   using return_t = std::expected<value_t, std::error_code>;
@@ -45,6 +35,25 @@ auto race(Aws &&...aws) -> task<std::expected<
         },
         std::move(*sel_res));
   }
+}
+
+} // namespace detail
+
+/// @brief Races multiple awaitables concurrently, returning the value of the
+/// first to complete successfully.
+/// @details If the first completed awaitable fails, or if an operation-wide
+/// error occurs,
+///          the failure is propagated as a std::error_code.
+/// @note The returned task should be awaited immediately. Do not store it for
+/// later use,
+///       as the supplied awaitables must remain alive until the operation
+///       completes.
+template <coasio_awaitable... Aws> auto race(Aws &&...aws) {
+  static_assert(sizeof...(Aws) > 0, "race requires at least one awaitable");
+  using value_t =
+      coasio::detail::race_value_t<coasio::detail::await_result_t<Aws>...>;
+  using ret_t = std::expected<value_t, std::error_code>;
+  return detail::race_impl<ret_t>(std::forward<Aws>(aws)...);
 }
 
 } // namespace coasio::combinators

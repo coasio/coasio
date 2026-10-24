@@ -102,10 +102,8 @@ task<void> join_worker(Aw &&aw, std::shared_ptr<State> state) {
   co_return;
 }
 
-template <coasio_awaitable... Aws, std::size_t... Is>
-auto join_impl(std::index_sequence<Is...>, Aws &&...aws)
-    -> task<std::expected<coasio::detail::join_tuple_t<await_result_t<Aws>...>,
-                          std::error_code>> {
+template <typename Ret, coasio_awaitable... Aws, std::size_t... Is>
+auto join_impl(std::index_sequence<Is...>, Aws &&...aws) -> task<Ret> {
   constexpr std::size_t N = sizeof...(Aws);
   using state_t = join_state<await_result_t<Aws>...>;
   using tuple_t = coasio::detail::join_tuple_t<await_result_t<Aws>...>;
@@ -168,8 +166,11 @@ auto join_impl(std::index_sequence<Is...>, Aws &&...aws)
 ///       completes.
 template <coasio_awaitable... Aws> auto join(Aws &&...aws) {
   static_assert(sizeof...(Aws) > 0, "join requires at least one task");
-  return detail::join_impl(std::index_sequence_for<Aws...>{},
-                           std::forward<Aws>(aws)...);
+  using ret_t =
+      std::expected<coasio::detail::join_tuple_t<await_result_t<Aws>...>,
+                    std::error_code>;
+  return detail::join_impl<ret_t>(std::index_sequence_for<Aws...>{},
+                                  std::forward<Aws>(aws)...);
 }
 
 } // namespace coasio::combinators
