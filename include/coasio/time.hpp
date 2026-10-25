@@ -25,19 +25,19 @@ public:
   // creates a timer without setting an expiry time
   static timer create() noexcept {
     return timer{
-        asio::basic_waitable_timer<Clock>{runtime::get_current_io_context()}};
+        asio::basic_waitable_timer<Clock>{detail::get_current_io_context()}};
   }
 
   // creates a timer and sets the expiry time as an absolute time.
   static timer create(const time_point &expiry_time) noexcept {
     return timer{asio::basic_waitable_timer<Clock>{
-        runtime::get_current_io_context(), expiry_time}};
+        detail::get_current_io_context(), expiry_time}};
   }
 
   // creates a timer and sets the expiry time relative to now.
   static timer create(const duration &expiry_time) noexcept {
     return timer{asio::basic_waitable_timer<Clock>{
-        runtime::get_current_io_context(), expiry_time}};
+        detail::get_current_io_context(), expiry_time}};
   }
 
   /**
@@ -114,8 +114,8 @@ inline auto sleep(const std::chrono::milliseconds ms) {
         return;
       }
 
-      timer_ =
-          std::make_unique<asio::steady_timer>(rt->get_io_context(), duration_);
+      timer_ = std::make_unique<asio::steady_timer>(
+          detail::get_current_io_context(), duration_);
       timer_->async_wait(asio::bind_cancellation_slot(
           sig_.slot(), [this, h, w, rt](const asio::error_code &ec) {
             guard_.disarm();

@@ -342,15 +342,6 @@ public:
 
   asio::io_context &get_io_context() noexcept { return io_context_; }
 
-  static asio::io_context &get_current_io_context() noexcept {
-    auto *rt = current();
-    if (!rt) {
-      std::cerr << "Called outside a coasio runtime\n";
-      std::terminate();
-    }
-    return rt->get_io_context();
-  }
-
   void schedule(std::coroutine_handle<> h) {
     if (!h) {
       return;
@@ -428,6 +419,10 @@ namespace detail {
 inline runtime *current_runtime() noexcept { return runtime::current(); }
 
 inline worker *current_worker() noexcept { return runtime::current_worker(); }
+
+inline asio::io_context &get_current_io_context() noexcept {
+  return current_runtime()->get_io_context();
+}
 
 inline void runtime_schedule(runtime *rt, const std::coroutine_handle<> h) {
   rt->schedule(h);

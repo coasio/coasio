@@ -1,6 +1,5 @@
 #ifndef COASIO_NET_TCP_LISTENER_HPP
 #define COASIO_NET_TCP_LISTENER_HPP
-#include "coasio/runtime.hpp"
 
 #include <asio/ip/tcp.hpp>
 
@@ -15,7 +14,7 @@ public:
   using wait_type = asio::ip::tcp::acceptor::wait_type;
 
   static listener create() {
-    return listener{asio::ip::tcp::acceptor{runtime::get_current_io_context()}};
+    return listener{asio::ip::tcp::acceptor{detail::get_current_io_context()}};
   }
 
   static std::expected<listener, std::error_code>
@@ -117,11 +116,11 @@ public:
     std::error_code ec_;
     acceptor_.close(ec_);
     if (ec_)
-      return std::unexpected(std::move(ec_));
+      return std::unexpected(ec_);
     return {};
   }
 
-  bool is_open() const { return acceptor_.is_open(); }
+  [[nodiscard]] bool is_open() const { return acceptor_.is_open(); }
 
   std::expected<endpoint, std::error_code> local_endpoint() const noexcept {
     asio::error_code ec;

@@ -7,7 +7,6 @@ using namespace std::chrono_literals;
 #include "coasio.hpp"
 #include "coasio/combinators.hpp"
 #include "coasio/net/udp.hpp"
-#include "coasio/time.hpp"
 
 constexpr std::array<std::byte, 30> dns_query = {
     std::byte{0xaa}, std::byte{0xbb}, // Transaction ID
@@ -29,7 +28,7 @@ constexpr std::array<std::byte, 30> dns_query = {
 
 coasio::task<void> req() {
   auto socket = coasio::net::udp::socket::create();
-  coasio::net::udp::endpoint server_endpoint{
+  const coasio::net::udp::endpoint server_endpoint{
       coasio::net::ip_address::from_string("8.8.8.8").value(), 53};
   const auto r =
       socket.bind(coasio::net::udp::endpoint{coasio::net::ip_address::v4(), 0});
