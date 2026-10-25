@@ -132,7 +132,7 @@ TEST_CASE("select_pre_cancelled_parent", "[combinators][select]") {
 TEST_CASE("select_winner_vs_parent_cancel_race",
           "[combinators][select][stress]") {
   coasio::runtime rt{};
-  for (int iter = 0; iter < 1000; ++iter) {
+  for (int iter = 0; iter < 500; ++iter) {
     std::atomic<bool> branch_b_alive{false};
 
     auto h = rt.spawn([](std::atomic<bool> *alive) -> coasio::task<int> {

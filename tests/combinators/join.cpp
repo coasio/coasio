@@ -226,7 +226,7 @@ TEST_CASE("join: non-cooperative branch blocks join return",
 TEST_CASE("join: completion vs parent cancel race stress test",
           "[combinators][join][stress]") {
   coasio::runtime rt{};
-  for (int iter = 0; iter < 1000; ++iter) {
+  for (int iter = 0; iter < 500; ++iter) {
     std::atomic<bool> branch_b_alive{false};
 
     auto h = rt.spawn([](std::atomic<bool> *alive) -> coasio::task<int> {

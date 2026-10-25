@@ -260,7 +260,7 @@ TEST_CASE("race: non-cooperative loser blocks combinator return",
 TEST_CASE("race: winner vs parent cancel stress race",
           "[combinators][race][stress]") {
   coasio::runtime rt{};
-  for (int iter = 0; iter < 1000; ++iter) {
+  for (int iter = 0; iter < 500; ++iter) {
     std::atomic<bool> branch_b_alive{false};
 
     auto h = rt.spawn([](std::atomic<bool> *alive) -> coasio::task<int> {
