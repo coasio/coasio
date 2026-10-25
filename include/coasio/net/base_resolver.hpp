@@ -7,7 +7,7 @@
 #include <asio/ip/basic_resolver.hpp>
 
 #include "coasio/detail/async_op.hpp"
-#include "coasio/runtime.hpp"
+#include "coasio/detail/fwd.hpp"
 
 namespace coasio::net {
 template <typename InternetProtocol> class base_resolver {
@@ -16,7 +16,7 @@ public:
   using results_type = asio::ip::basic_resolver<protocol_type>::results_type;
 
   static base_resolver create() noexcept {
-    return base_resolver{runtime::get_current_io_context()};
+    return base_resolver{detail::get_current_io_context()};
   }
 
   auto resolve(const std::string_view host, const std::string_view service) {

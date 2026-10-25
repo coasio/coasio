@@ -14,10 +14,10 @@
 
 #include "coasio/detail/async_op.hpp"
 #include "coasio/detail/byte_like.hpp"
+#include "coasio/detail/fwd.hpp"
 #include "coasio/net/helper.hpp"
 #include "coasio/net/udp/endpoint.hpp"
 #include "coasio/net/udp/resolver.hpp"
-#include "coasio/runtime.hpp"
 #include "coasio/task.hpp"
 
 namespace coasio::net::udp {
@@ -39,7 +39,7 @@ public:
       : socket_{std::move(socket)} {}
 
   static socket create() noexcept {
-    return socket{asio::ip::udp::socket{runtime::get_current_io_context()}};
+    return socket{asio::ip::udp::socket{detail::get_current_io_context()}};
   }
 
   static task<std::expected<socket, std::error_code>>

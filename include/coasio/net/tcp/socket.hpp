@@ -14,6 +14,7 @@
 
 #include "coasio/detail/async_op.hpp"
 #include "coasio/detail/byte_like.hpp"
+#include "coasio/detail/fwd.hpp"
 #include "coasio/net/helper.hpp"
 #include "endpoint.hpp"
 #include "resolver.hpp"
@@ -36,7 +37,7 @@ public:
       : socket_{std::move(socket)} {}
 
   static socket create() noexcept {
-    return socket{asio::ip::tcp::socket{runtime::get_current_io_context()}};
+    return socket{asio::ip::tcp::socket{detail::get_current_io_context()}};
   }
 
   static task<std::expected<socket, std::error_code>>
