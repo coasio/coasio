@@ -70,7 +70,7 @@ public:
             guard_.arm([this] { sig_.emit(asio::cancellation_type::all); });
         if (r == cancel_guard::arm_result::already_cancelled) {
           ec_ = asio::error::operation_aborted;
-          rt->schedule_in(w, h);
+          detail::runtime_schedule_in(rt, w, h);
           return;
         }
 

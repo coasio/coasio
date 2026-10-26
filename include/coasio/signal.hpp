@@ -16,8 +16,7 @@ namespace coasio {
 
 class signal {
 public:
-  signal()
-      : signals_(detail::get_current_io_context(detail::current_runtime())) {}
+  signal() : signals_(detail::get_current_io_context()) {}
 
   signal(const signal &) = delete;
   signal &operator=(const signal &) = delete;
@@ -25,8 +24,6 @@ public:
   void add(const int sig) { signals_.add(sig); }
 
   auto wait() {
-    assert(signals_.size() > 0 &&
-           "signal::wait() called with no signals registered");
     return detail::async_op<int>([this]<typename Args>(Args &&token) {
       asio_handle().async_wait(std::forward<Args>(token));
     });

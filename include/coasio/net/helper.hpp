@@ -8,7 +8,7 @@
 #include <system_error>
 
 namespace coasio::net {
-std::string_view trim_whitespace(const std::string_view sv) noexcept {
+inline std::string_view trim_whitespace(const std::string_view sv) noexcept {
   size_t start = 0;
   size_t end = sv.length();
   bool s = true;
@@ -32,7 +32,7 @@ std::string_view trim_whitespace(const std::string_view sv) noexcept {
              : std::string_view{};
 }
 
-std::expected<std::uint16_t, std::error_code>
+inline std::expected<std::uint16_t, std::error_code>
 parse_port(const std::string_view port_str) noexcept {
   if (port_str.empty()) {
     return std::unexpected(std::make_error_code(std::errc::invalid_argument));

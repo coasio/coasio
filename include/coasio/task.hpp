@@ -1,6 +1,7 @@
 #ifndef COASIO_TASK_HPP
 #define COASIO_TASK_HPP
 
+#include <concepts>
 #include <coroutine>
 #include <exception>
 #include <optional>
@@ -60,10 +61,10 @@ public:
       return final_awaiter{};
     }
 
-    template <typename U>
-    void return_value(U &&value)
-      requires std::is_convertible_v<U, T>
-    {
+    template <typename U = T>
+      requires std::constructible_from<T, U>
+    void
+    return_value(U &&value) noexcept(std::is_nothrow_constructible_v<T, U>) {
       result_.emplace(std::forward<U>(value));
     }
     void unhandled_exception() { exception_ = std::current_exception(); }

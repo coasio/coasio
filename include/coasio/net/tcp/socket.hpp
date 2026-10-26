@@ -16,6 +16,7 @@
 #include "coasio/detail/byte_like.hpp"
 #include "coasio/detail/fwd.hpp"
 #include "coasio/net/helper.hpp"
+#include "coasio/task.hpp"
 #include "endpoint.hpp"
 #include "resolver.hpp"
 
