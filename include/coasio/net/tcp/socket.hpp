@@ -15,6 +15,7 @@
 #include "coasio/detail/async_op.hpp"
 #include "coasio/detail/byte_like.hpp"
 #include "coasio/detail/fwd.hpp"
+#include "coasio/io/concepts.hpp"
 #include "coasio/net/helper.hpp"
 #include "coasio/task.hpp"
 #include "endpoint.hpp"
@@ -208,6 +209,10 @@ public:
 private:
   asio::ip::tcp::socket socket_;
 };
+
+static_assert(coasio::io::async_read_stream<socket>);
+static_assert(coasio::io::async_write_stream<socket>);
+static_assert(coasio::io::async_stream<socket>);
 }; // namespace coasio::net::tcp
 
 #endif // !COASIO_NET_TCP_SOCKET_HPP

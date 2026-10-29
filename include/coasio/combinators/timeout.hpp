@@ -20,7 +20,7 @@ namespace detail {
 template <typename Ret, typename Rep, typename Period, coasio_awaitable Aw>
 auto timeout_impl(std::chrono::duration<Rep, Period> duration, Aw &&op)
     -> task<Ret> {
-  using raw_result_t = coasio::detail::await_result_t<Aw>;
+  using raw_result_t = await_result_t<Aw>;
   using value_t = coasio::detail::unwrap_expected_ec_t<raw_result_t>;
   using return_t = std::expected<value_t, std::error_code>;
 
@@ -53,7 +53,7 @@ auto timeout_impl(std::chrono::duration<Rep, Period> duration, Aw &&op)
 template <typename Rep, typename Period, coasio_awaitable Aw>
 auto timeout(std::chrono::duration<Rep, Period> duration, Aw &&op) {
   using value_t =
-      coasio::detail::unwrap_expected_ec_t<coasio::detail::await_result_t<Aw>>;
+      coasio::detail::unwrap_expected_ec_t<await_result_t<Aw>>;
   using ret_t = std::expected<value_t, std::error_code>;
   return detail::timeout_impl<ret_t>(duration, std::forward<Aw>(op));
 }

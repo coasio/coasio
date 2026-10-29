@@ -2,9 +2,6 @@
 #define COASIO_DETAIL_COMBINATOR_COMMON_HPP
 
 #include <array>
-#include <concepts>
-#include <coroutine>
-#include <cstddef>
 #include <expected>
 #include <system_error>
 #include <tuple>
@@ -16,53 +13,6 @@
 #include "coasio/runtime.hpp"
 
 namespace coasio::detail {
-
-// Resolves the awaiter object for any type supporting co_await
-template <typename Aw>
-constexpr decltype(auto)
-get_awaiter(Aw &&aw) noexcept(noexcept(std::forward<Aw>(aw))) {
-  if constexpr (requires { std::forward<Aw>(aw).operator co_await(); }) {
-    return std::forward<Aw>(aw).operator co_await();
-  } else if constexpr (requires { operator co_await(std::forward<Aw>(aw)); }) {
-    return operator co_await(std::forward<Aw>(aw));
-  } else {
-    return std::forward<Aw>(aw);
-  }
-}
-
-template <typename Aw>
-concept awaitable = requires(Aw &&aw, std::coroutine_handle<> h) {
-  {
-    get_awaiter(std::forward<Aw>(aw)).await_ready()
-  } -> std::convertible_to<bool>;
-  { get_awaiter(std::forward<Aw>(aw)).await_suspend(h) };
-  { get_awaiter(std::forward<Aw>(aw)).await_resume() };
-} && requires(Aw &&aw, std::coroutine_handle<> h) {
-  requires(
-      std::same_as<decltype(get_awaiter(std::forward<Aw>(aw))
-                                .await_suspend(
-                                    std::declval<std::coroutine_handle<>>())),
-                   void> ||
-      std::same_as<decltype(get_awaiter(std::forward<Aw>(aw))
-                                .await_suspend(
-                                    std::declval<std::coroutine_handle<>>())),
-                   bool> ||
-      std::convertible_to<
-          decltype(get_awaiter(std::forward<Aw>(aw))
-                       .await_suspend(std::declval<std::coroutine_handle<>>())),
-          std::coroutine_handle<>>);
-};
-
-template <awaitable Aw>
-using await_result_t = decltype(get_awaiter(std::declval<Aw>()).await_resume());
-
-template <typename Aw>
-concept coasio_awaitable =
-    awaitable<Aw> && (requires(Aw &aw, std::shared_ptr<cancel_scope> scope) {
-      aw.set_cancel_scope(scope);
-    } || is_task_v<Aw>);
-
-// Result traits
 
 template <typename T>
 using norm_void_t = std::conditional_t<std::is_void_v<T>, std::monostate, T>;
@@ -127,13 +77,5 @@ struct vector_handles_abort_guard {
 };
 
 }; // namespace coasio::detail
-
-namespace coasio {
-
-using detail::await_result_t;
-using detail::awaitable;
-using detail::coasio_awaitable;
-
-} // namespace coasio
 
 #endif // !COASIO_DETAIL_COMBINATOR_COMMON_HPP

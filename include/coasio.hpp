@@ -1,6 +1,7 @@
 #ifndef COASIO_HPP
 #define COASIO_HPP
 
+#include "coasio/concepts.hpp"
 #include "coasio/runtime.hpp"
 #include "coasio/task.hpp"
 

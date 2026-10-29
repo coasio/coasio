@@ -3,6 +3,8 @@
 
 #include <coroutine>
 
+#include <asio/io_context.hpp>
+
 namespace coasio {
 class worker;
 class runtime;

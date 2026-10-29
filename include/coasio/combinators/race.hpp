@@ -18,7 +18,7 @@ namespace detail {
 template <typename Ret, coasio_awaitable... Aws>
 auto race_impl(Aws &&...aws) -> task<Ret> {
   using value_t =
-      coasio::detail::race_value_t<coasio::detail::await_result_t<Aws>...>;
+      coasio::detail::race_value_t<await_result_t<Aws>...>;
   using return_t = std::expected<value_t, std::error_code>;
 
   auto sel_res = co_await select(std::forward<Aws>(aws)...);
@@ -51,7 +51,7 @@ auto race_impl(Aws &&...aws) -> task<Ret> {
 template <coasio_awaitable... Aws> auto race(Aws &&...aws) {
   static_assert(sizeof...(Aws) > 0, "race requires at least one awaitable");
   using value_t =
-      coasio::detail::race_value_t<coasio::detail::await_result_t<Aws>...>;
+      coasio::detail::race_value_t<await_result_t<Aws>...>;
   using ret_t = std::expected<value_t, std::error_code>;
   return detail::race_impl<ret_t>(std::forward<Aws>(aws)...);
 }
