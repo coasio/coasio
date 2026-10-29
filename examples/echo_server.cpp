@@ -1,13 +1,16 @@
 #include <coasio.hpp>
 
+#include "coasio/combinators.hpp"
 #include "coasio/net/ip_address.hpp"
 #include "coasio/net/tcp.hpp"
+#include "coasio/signal.hpp"
 #include "coasio/time.hpp"
 
 #include <atomic>
 #include <cmath>
 #include <iomanip>
 #include <iostream>
+#include <print>
 
 #define COASIO_MAIN$()                                                         \
   auto __user_main() -> ::coasio::task<int>;                                   \
@@ -117,7 +120,11 @@ coasio::task<void> metrics_monitor_task() {
 }
 
 coasio::task<void> client_handler(coasio::net::tcp::socket sk) {
-  ++g_stats.active_clients;
+  auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
+                 std::chrono::steady_clock::now().time_since_epoch())
+                 .count();
+  std::println("[{} ms] HANDLER start (active={})", now,
+               ++g_stats.active_clients);
 
   struct ClientGuard {
     ~ClientGuard() { --g_stats.active_clients; }
@@ -167,14 +174,37 @@ COASIO_MAIN$() {
   coasio::spawn(metrics_monitor_task());
 
   for (;;) {
-    auto maybeSocket = co_await listener.accept();
-    if (!maybeSocket) {
-      std::cerr << "[Error] accept " << maybeSocket.error().message()
-                << std::endl;
+    auto s =
+        co_await coasio::select(listener.accept(), coasio::signal::ctrl_c());
+    std::println("[{} ms] ACCEPT",
+                 std::chrono::duration_cast<std::chrono::milliseconds>(
+                     std::chrono::steady_clock::now().time_since_epoch())
+                     .count());
+    if (!s) {
+      std::cerr << "Error in select: " << s.error().message() << std::endl;
       co_return 1;
     }
-    auto socket = std::move(*maybeSocket);
-    coasio::spawn(client_handler(std::move(socket)));
+    const auto i = std::visit(
+        []<typename T>(T &&t) -> int {
+          if constexpr (coasio::combinators::is_branch_index<T, 0>) {
+            auto maybeSocket = std::move(std::forward<T>(t).value);
+            if (!maybeSocket) {
+              std::cerr << "[Error] accept " << maybeSocket.error().message()
+                        << std::endl;
+              return 1;
+            }
+            auto socket = std::move(*maybeSocket);
+            coasio::spawn(client_handler(std::move(socket)));
+            return 0;
+          } else {
+            std::cerr << "Received ctrl+c signal" << std::endl;
+            return 1;
+          }
+        },
+        *s);
+    if (i == 1) {
+      co_return 1;
+    }
   }
 
   co_return 0;

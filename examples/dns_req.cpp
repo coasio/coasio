@@ -8,6 +8,8 @@ using namespace std::chrono_literals;
 #include "coasio/combinators.hpp"
 #include "coasio/net/udp.hpp"
 
+#include "coasio/io/bytes_mut.hpp"
+
 constexpr std::array<std::byte, 30> dns_query = {
     std::byte{0xaa}, std::byte{0xbb}, // Transaction ID
     std::byte{0x01}, std::byte{0x00}, // Flags: Standard query
@@ -67,6 +69,25 @@ coasio::task<void> req() {
 }
 
 int main() {
+  coasio::io::bytes_mut buffer;
+  auto s = buffer.writable_span();
+  std::memcpy(s.data(), dns_query.data(), dns_query.size());
+  buffer.commit(dns_query.size());
+  auto rs = buffer.readable_span();
+  assert(rs.size() == dns_query.size());
+  for (size_t i = 0; i < rs.size(); ++i) {
+    if (rs[i] != dns_query[i]) {
+      std::cout << "[!] byte number: " << i
+                << " is different rs[i]=" << static_cast<char>(rs[i])
+                << " dns_query[i]" << static_cast<char>(dns_query[i])
+                << std::endl;
+    }
+  }
+  std::cout << "good we still have: " << buffer.writable_span().size() << std::endl;
+  return 0;
+}
+
+int _main() {
   coasio::runtime rt{};
   rt.block_on([] -> coasio::task<void> {
     auto r = co_await coasio::timeout(req(), 2s);

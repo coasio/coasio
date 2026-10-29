@@ -1,9 +1,9 @@
 #include <coasio.hpp>
 #include <coasio/net/tcp.hpp>
-#include <coasio/time.hpp>
+#include <coasio/signal.hpp>
 
+#include <print>
 #include <random>
-#include <ranges>
 #include <vector>
 
 #define COASIO_MAIN$()                                                         \
@@ -15,10 +15,21 @@
   auto __user_main() -> ::coasio::task<int>
 
 coasio::task<void> client(const size_t id, const size_t message_size) {
+  auto ts = [] {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+               std::chrono::steady_clock::now().time_since_epoch())
+        .count();
+  };
+  std::println("[{} ms] [client {}] coroutine entered", ts(), id);
+  auto t0 = ts();
   auto maybeStream =
-      co_await coasio::net::tcp::socket::connect_to("127.0.0.1:8080");
+      co_await coasio::net::tcp::socket::connect_to(coasio::net::tcp::endpoint{
+          coasio::net::ip_address::from_string("127.0.0.1").value(), 8080});
+  std::println("[{} ms] [client {}] connect returned in {} ms", ts(), id,
+               ts() - t0);
   if (!maybeStream) {
-    std::cerr << "[Error] connect failed: " << maybeStream.error().message()
+    std::cerr << "[Error] [" << id
+              << "] connect failed: " << maybeStream.error().message()
               << std::endl;
     co_return;
   }
@@ -53,19 +64,13 @@ coasio::task<void> client(const size_t id, const size_t message_size) {
 }
 
 COASIO_MAIN$() {
-  constexpr size_t client_number = 20;
+  constexpr size_t client_number = 1000;
   for (size_t i = 0; i < client_number; i++) {
     constexpr size_t message_size = 1024;
     coasio::spawn(client(i, message_size));
   }
 
-  while (true) {
-    if (auto slp_res = co_await coasio::time::sleep(std::chrono::seconds(1));
-        !slp_res) {
-      std::cerr << "[Error] sleep failed: " << slp_res.error().message()
-                << std::endl;
-      break;
-    }
-  }
+  auto _ = co_await coasio::signal::ctrl_c();
+
   co_return 0;
 }
