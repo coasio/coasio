@@ -42,6 +42,13 @@ public:
     return socket{asio::ip::tcp::socket{detail::get_current_io_context()}};
   }
 
+  auto connect(const endpoint &ep) {
+    return detail::async_op<void>([this, ep]<typename Args>(Args &&token) {
+      asio_handle().async_connect(ep.asio_endpoint(),
+                                  std::forward<Args>(token));
+    });
+  }
+
   static task<std::expected<socket, std::error_code>>
   connect_to(std::string_view host_and_port) {
     auto maybe_hap = parse_host_port(host_and_port);
@@ -61,18 +68,19 @@ public:
     }
 
     auto sck = socket::create();
-    auto result = co_await sck.connect_impl(*maybe_eps);
-    if (!result) {
+    if (auto result = co_await sck.connect_impl(*maybe_eps); !result) {
       co_return std::unexpected(result.error());
     }
     co_return std::move(sck);
   }
 
-  auto connect(const endpoint &ep) {
-    return detail::async_op<void>([this, ep]<typename Args>(Args &&token) {
-      asio_handle().async_connect(ep.asio_endpoint(),
-                                  std::forward<Args>(token));
-    });
+  static task<std::expected<socket, std::error_code>>
+  connect_to(const endpoint &ep) {
+    auto sck = socket::create();
+    if (auto result = co_await sck.connect(ep); !result) {
+      co_return std::unexpected(result.error());
+    }
+    co_return std::move(sck);
   }
 
   std::expected<void, std::error_code> bind(const endpoint &ep) {
